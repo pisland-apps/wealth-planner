@@ -735,7 +735,7 @@ function ownerBadgeHtml(ownerIds, membersById) {
   if (names.length === 0) return '';
   const icon = names.length > 1 ? '👫' : '👤';
   const color = memberColor(ownerIds[0]);
-  const label = names.join(' & ');
+  const label = escapeHtml(names.join(' & '));
   return `<span style="display:inline-block;background:${color}18;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${icon} ${label}</span>`;
 }
 async function membersByIdMap() {
@@ -1229,7 +1229,7 @@ async function showFundDetail(fundId) {
       <td>${tx.units || '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
         <button class="icon-btn" title="Edit" onclick="editTransaction(${tx.id})">✏️</button>
         <button class="icon-btn" title="Delete" onclick="deleteTransaction(${tx.id})">🗑️</button>
@@ -1338,12 +1338,12 @@ async function renderTransactions() {
     const fund = funds.find(f => f.id === tx.fundId);
     return `<tr>
       <td>${escapeHtml(tx.date)}</td>
-      <td>${fund ? fund.name : 'Unknown'}</td>
+      <td>${fund ? escapeHtml(fund.name) : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
       <td>${tx.units || '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
         <button class="icon-btn" title="Edit" onclick="editTransaction(${tx.id})">✏️</button>
         <button class="icon-btn" title="Delete" onclick="deleteTransaction(${tx.id})">🗑️</button>
@@ -2047,7 +2047,7 @@ async function showClosedFundDetail(fundId) {
       <td>${tx.units || '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
     </tr>`).join('');
   }
 
@@ -2503,7 +2503,7 @@ async function showAmanahFundDetail(fundId) {
       <td>${tx.units || '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
     </tr>`).join('');
   }
   document.getElementById('amanahFundDetailModal').classList.add('active');
@@ -2697,12 +2697,12 @@ async function renderAmanahLedger() {
     const fund = fundsById[tx.amanahFundId];
     return `<tr>
       <td>${escapeHtml(tx.date)}</td>
-      <td>${fund ? fund.name : 'Unknown'}</td>
+      <td>${fund ? escapeHtml(fund.name) : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${amanahTxTypeLabel(tx.type)}</span></td>
       <td>${tx.units || '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
         <button class="icon-btn" title="Edit" onclick="editAmanahTx(${tx.id})">✏️</button>
         <button class="icon-btn" title="Delete" onclick="deleteAmanahTx(${tx.id})">🗑️</button>
@@ -3000,7 +3000,7 @@ async function showKwspAccountDetail(accountId) {
       <td>${escapeHtml(tx.date)}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
       <td>${formatCurrency(tx.amount, account.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
     </tr>`).join('');
   }
   document.getElementById('kwspAccountDetailModal').classList.add('active');
@@ -3129,7 +3129,7 @@ async function renderKwspLedger() {
       <td>${account ? account.name : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
       <td>${formatCurrency(tx.amount, account && account.currency)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
         <button class="icon-btn" title="Edit" onclick="editKwspTx(${tx.id})">✏️</button>
         <button class="icon-btn" title="Delete" onclick="deleteKwspTx(${tx.id})">🗑️</button>
@@ -3691,7 +3691,7 @@ async function showFdDetail(fdId) {
       payoutsTable.innerHTML = payouts.map(p => `<tr>
         <td>${escapeHtml(p.date)}</td>
         <td class="positive">${formatCurrency(p.amount, fd.currency)}</td>
-        <td>${p.notes || '-'}</td>
+        <td>${escapeHtml(p.notes || '-')}</td>
         <td><div class="tx-actions">
           <button class="icon-btn" title="Delete" onclick="deleteFdInterestPayout(${p.id})">🗑️</button>
         </div></td>
@@ -3713,7 +3713,7 @@ async function showFdDetail(fdId) {
       <td>${formatCurrency(r.principal, r.currency)}</td>
       <td>${formatCurrency(r.interestEarned, r.currency)}</td>
       <td>${r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)}</td>
-      <td>${r.notes || '-'}</td>
+      <td>${escapeHtml(r.notes || '-')}</td>
     </tr>`).join('');
   }
   document.getElementById('fdDetailModal').classList.add('active');
@@ -3910,7 +3910,7 @@ async function renderFdMaturityRecords() {
     <td>${formatCurrency(r.principal, r.currency)}</td>
     <td class="positive">${formatCurrency(r.interestEarned, r.currency)}</td>
     <td>${r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)}</td>
-    <td>${r.notes || '-'}</td>
+    <td>${escapeHtml(r.notes || '-')}</td>
   </tr>`;
   }).join('');
 }
@@ -4911,7 +4911,7 @@ async function showRePropertyDetail(id) {
 
   const breakdown = p.purchaseBreakdown || [];
   document.getElementById('red-breakdown-body').innerHTML = breakdown.map(item => `<tr>
-    <td>${item.date || ''}</td><td>${item.category || ''}</td><td>${item.particular || ''}</td><td>${item.category === 'Credit Note' ? formatCurrencyNeg(item.amount, p.currency) : formatCurrency(item.amount, p.currency)}</td>
+    <td>${escapeHtml(item.date || '')}</td><td>${escapeHtml(item.category || '')}</td><td>${escapeHtml(item.particular || '')}</td><td>${item.category === 'Credit Note' ? formatCurrencyNeg(item.amount, p.currency) : formatCurrency(item.amount, p.currency)}</td>
   </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#a0aec0;">No breakdown recorded</td></tr>';
 
   const propCashTx = cashflowTx.filter(t => t.propertyId === id).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -5399,7 +5399,7 @@ function fxRenderTransactions(txs, membersById) {
       <td>${tx.rate.toFixed(5)}</td>
       <td>${formatCurrency(tx.totalBase, base)}</td>
       <td>${ownerBadgeHtml(tx.ownerIds, membersById)}</td>
-      <td>${tx.notes || '-'}</td>
+      <td>${escapeHtml(tx.notes || '-')}</td>
       <td>
         <button onclick="editFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
         <button onclick="deleteFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
@@ -5640,7 +5640,7 @@ async function renderFxCurrencyDetail(code) {
         <td>${tx.rate.toFixed(5)}</td>
         <td>${formatCurrency(tx.totalBase, base)}</td>
         <td>${ownerBadgeHtml(tx.ownerIds, membersById)}</td>
-        <td>${tx.notes || '-'}</td>
+        <td>${escapeHtml(tx.notes || '-')}</td>
         <td>
           <button onclick="editFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
           <button onclick="deleteFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
