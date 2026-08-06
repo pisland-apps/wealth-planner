@@ -11,7 +11,7 @@
  * stale cached copy.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — same-origin files that make up the installed app.
@@ -24,7 +24,9 @@ const APP_SHELL = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
-  './icons/favicon-16.png'
+  './icons/favicon-16.png',
+  './js/app.js',
+  './js/pdf-worker-init.js'
 ];
 
 // Third-party libraries loaded from CDNs (chart.js, Dexie, pdf.js + worker).
