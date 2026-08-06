@@ -11,7 +11,7 @@
  * stale cached copy.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — same-origin files that make up the installed app.

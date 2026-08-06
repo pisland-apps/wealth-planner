@@ -74,7 +74,7 @@ file** — I searched for `escapeHtml`, common casing variants, and any
 
 `escapeHtml()` is now defined near the top of `js/app.js`, and every
 call site I could find that builds HTML from stored/user-controllable
-data is now wrapped with it — 132 `escapeHtml(...)` calls across the
+data is now wrapped with it — 149 `escapeHtml(...)` calls across the
 file, covering:
 
 - Member, fund, property, account, plan, and forecast-plan names

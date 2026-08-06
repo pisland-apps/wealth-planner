@@ -1,14 +1,15 @@
 // --- HTML-escaping helper -------------------------------------------------
-// NOTE: this function did not exist anywhere in the original codebase.
-// ~150 places assign to .innerHTML using template strings that interpolate
-// user-entered data (member names, fund names, transaction notes, etc.)
-// with NO escaping at all. That is a real stored-XSS hole: e.g. a member
-// name of `<img src=x onerror=...>` would execute wherever that member's
-// name is rendered. Adding this helper is only step one — every call site
-// that builds HTML from user data needs to be updated to use it. That pass
-// has NOT been done in this patch (see README for the full list of
-// affected fields/locations); this patch only adds the CSP/SRI hardening
-// that was asked for, plus this helper so the fix can be applied next.
+// This function did not exist anywhere in the original codebase. ~150 places
+// assign to .innerHTML using template strings that interpolate user-entered
+// data (member names, fund names, transaction notes, etc.) with no escaping
+// at all — a stored-XSS hole, e.g. a member name of `<img src=x onerror=...>`
+// would execute wherever that member's name is rendered. Every call site
+// that builds HTML from user data has been updated to use this helper
+// (149 call sites as of this patch). Attribute contexts that embed a value
+// inside inline JS (e.g. onclick="fn(...)") additionally wrap the value in
+// JSON.stringify(...) before escapeHtml(...), so it's safely quoted as a JS
+// string literal AND safely escaped as an HTML attribute — see deleteMember's
+// onclick for the reference pattern.
 function escapeHtml(value) {
   if (value === null || value === undefined) return '';
   return String(value).replace(/[&<>"']/g, (ch) => ({
