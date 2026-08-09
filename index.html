@@ -18,7 +18,9 @@
 
 <!--
   Content-Security-Policy
-  - script-src: only 'self' + the two CDNs this app actually loads from (jsdelivr, cdnjs).
+  - script-src: 'self' only now. All three third-party libraries (chart.js, Dexie, pdf.js)
+    are vendored locally under ./lib/ and served from this origin — no CDN origin is
+    allowlisted here at all any more.
     No 'unsafe-inline' here, which is why the two inline <script> blocks that used to
     live in this file were moved out to ./js/pdf-worker-init.js and ./js/app.js.
   - script-src-attr: this app still uses onclick/onchange/oninput attributes throughout
@@ -31,7 +33,8 @@
   - style-src: 'unsafe-inline' is required because of inline style="" attributes and the
     <style> block below; not a script-execution risk on its own.
   - connect-src: 'self' plus the exchange-rate API this app calls.
-  - worker-src: cdnjs, because pdf.js loads its worker from there.
+  - worker-src: 'self' only now — pdf.js loads its worker from ./lib/ too (see
+    js/pdf-worker-init.js), so no external worker-src origin is needed.
   - img-src includes data: and blob: because attachments are rendered from data URLs and
     downloads/PDF previews use object URLs.
   - frame-ancestors/report-uri/sandbox are intentionally omitted: the CSP spec ignores
@@ -40,13 +43,13 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;
+  script-src 'self';
   script-src-attr 'unsafe-inline';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   font-src 'self';
   connect-src 'self' https://open.er-api.com;
-  worker-src 'self' https://cdnjs.cloudflare.com;
+  worker-src 'self';
   object-src 'none';
   base-uri 'none';
   form-action 'self';
@@ -54,21 +57,21 @@
 ">
 
 <!--
-  SRI (integrity/crossorigin): the integrity hashes below are PLACEHOLDERS — see
-  README "Generating real SRI hashes" section. I could not compute the real
-  sha384 values from inside this sandbox (no network access for hashing, and
-  fetching the files back only returns them as opaque binary, not bytes I can
-  hash) — pasting a hash I hadn't verified would be worse than none, since a
-  wrong hash just breaks the app silently at load time. Run the commands in
-  the README and paste the real values in before deploying.
+  All three third-party libraries are now vendored locally under ./lib/ and served
+  from this origin — chart.js and Dexie joined pdf.js there, so no CDN is loaded
+  from at all any more. No SRI hashes are needed either: SRI protects against a CDN
+  serving unexpected content, which doesn't apply to same-origin files you control.
+  ./lib/chart.umd.min.js — chart.js 4.4.1. The npm package doesn't publish a
+    minified UMD build (only dist/chart.umd.js, unminified); this was minified from
+    that exact same-version source with terser, matching what jsdelivr's .min.js URL
+    would have served, but built locally instead of fetched from jsdelivr.
+  ./lib/dexie.min.js — Dexie 3.2.4, the package's own published minified build,
+    copied as-is (no local minification needed).
+  ./lib/pdf.min.js + ./lib/pdf.worker.min.js — pdf.js 3.11.174, vendored earlier.
 -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
-  crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"
-  integrity="sha384-vG8R9Zn5YZHCeXt9gLNp8MnsUCqmIy7HPxhdOdLGa/30/c8uZXFrrN0iKGID/ZvC"
-  crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
-  crossorigin="anonymous"></script>
+<script src="./lib/chart.umd.min.js"></script>
+<script src="./lib/dexie.min.js"></script>
+<script src="./lib/pdf.min.js"></script>
 <script src="./js/pdf-worker-init.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }

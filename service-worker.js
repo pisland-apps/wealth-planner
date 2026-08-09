@@ -2,9 +2,10 @@
  * Wealth Planner — Service Worker
  * ------------------------------------------------------------
  * Purpose: make the app fully usable offline after first load.
- * All user data lives in IndexedDB inside the browser, so once
- * the app shell + its CDN libraries are cached, no network is
- * needed at all to open and use the planner.
+ * All user data lives in IndexedDB inside the browser, and as of
+ * this version every third-party library (chart.js, Dexie, pdf.js)
+ * is vendored locally under ./lib/ — there is no CDN dependency
+ * left at all, so the whole app is one same-origin shell.
  *
  * Bump CACHE_VERSION whenever index.html or its assets change,
  * so returning visitors pick up the new version instead of a
@@ -17,10 +18,13 @@
  * and the deploy checklist in README.md.
  */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
-// App shell — same-origin files that make up the installed app.
+// App shell — every same-origin file the app needs, including the
+// vendored libraries. No CDN assets left to track separately: all
+// three third-party scripts (chart.js, Dexie, pdf.js + its worker)
+// live under ./lib/ and are just as "app shell" as index.html itself.
 const APP_SHELL = [
   './',
   './index.html',
@@ -32,40 +36,20 @@ const APP_SHELL = [
   './icons/favicon-32.png',
   './icons/favicon-16.png',
   './js/app.js',
-  './js/pdf-worker-init.js'
-];
-
-// Third-party libraries loaded from CDNs (chart.js, Dexie, pdf.js + worker).
-// Cached up front too so the very first offline session already works.
-const CDN_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  './js/pdf-worker-init.js',
+  './lib/chart.umd.min.js',
+  './lib/dexie.min.js',
+  './lib/pdf.min.js',
+  './lib/pdf.worker.min.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      // Same-origin shell must succeed.
+      // Everything is same-origin now, so the whole shell must succeed —
+      // there's no separate "best-effort CDN" tier any more.
       await cache.addAll(APP_SHELL);
-      // CDN assets are best-effort — don't fail install if one CDN
-      // is briefly unreachable at install time; fetch handler below
-      // will still cache them opportunistically on first real request.
-      await Promise.all(
-        CDN_ASSETS.map(async (url) => {
-          try {
-            const req = new Request(url, { mode: 'cors' });
-            const res = await fetch(req);
-            if (res && (res.ok || res.type === 'opaque')) {
-              await cache.put(req, res);
-            }
-          } catch (err) {
-            // Ignore — will retry via runtime caching on next fetch.
-          }
-        })
-      );
       await self.skipWaiting();
     })()
   );
@@ -90,51 +74,26 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return; // only cache safe reads
 
   const url = new URL(request.url);
-  const isSameOrigin = url.origin === self.location.origin;
-  const isKnownCdn = CDN_ASSETS.includes(request.url);
+  if (url.origin !== self.location.origin) return; // no cross-origin requests to handle any more
 
-  if (isSameOrigin) {
-    // App shell: cache-first, falling back to network, then to index.html
-    // for any navigation so deep refreshes still work offline.
-    event.respondWith(
-      (async () => {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        try {
-          const fresh = await fetch(request);
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(request, fresh.clone());
-          return fresh;
-        } catch (err) {
-          if (request.mode === 'navigate') {
-            const fallback = await caches.match('./index.html');
-            if (fallback) return fallback;
-          }
-          throw err;
-        }
-      })()
-    );
-    return;
-  }
-
-  if (isKnownCdn) {
-    // Stale-while-revalidate: serve cached copy instantly, refresh in
-    // the background so a library update is picked up next launch.
-    event.respondWith(
-      (async () => {
+  // App shell: cache-first, falling back to network, then to index.html
+  // for any navigation so deep refreshes still work offline.
+  event.respondWith(
+    (async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      try {
+        const fresh = await fetch(request);
         const cache = await caches.open(CACHE_NAME);
-        const cached = await cache.match(request);
-        const networkFetch = fetch(request)
-          .then((res) => {
-            if (res && (res.ok || res.type === 'opaque')) {
-              cache.put(request, res.clone());
-            }
-            return res;
-          })
-          .catch(() => cached);
-        return cached || networkFetch;
-      })()
-    );
-  }
-  // Any other cross-origin request: let the browser handle it normally.
+        cache.put(request, fresh.clone());
+        return fresh;
+      } catch (err) {
+        if (request.mode === 'navigate') {
+          const fallback = await caches.match('./index.html');
+          if (fallback) return fallback;
+        }
+        throw err;
+      }
+    })()
+  );
 });

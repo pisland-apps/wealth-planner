@@ -5,10 +5,15 @@
 Added a `<meta http-equiv="Content-Security-Policy">` tag in `index.html`.
 Key points (full rationale is in comments right above the tag):
 
-- `script-src` allows only `'self'`, `cdn.jsdelivr.net`, `cdnjs.cloudflare.com` —
-  no `'unsafe-inline'`. This is enforceable now because both inline `<script>`
-  blocks that used to live in `index.html` were moved to real files:
-  `js/pdf-worker-init.js` and `js/app.js`.
+- `script-src` is `'self'` only now — no CDN origin is allowlisted at all.
+  All three third-party libraries (chart.js, Dexie, pdf.js + its worker) are
+  vendored locally under `./lib/`, matching how the Tax Tracker app vendors
+  pdf.js. `cdn.jsdelivr.net` (chart.js, Dexie) and `cdnjs.cloudflare.com`
+  (pdf.js) used to be allowlisted here; both have been dropped now that
+  every script the app loads is same-origin. This is enforceable without
+  `'unsafe-inline'` because both inline `<script>` blocks that used to live
+  in `index.html` were moved to real files: `js/pdf-worker-init.js` and
+  `js/app.js`.
 - `script-src-attr 'unsafe-inline'` — **required**, and this is a real,
   intentional limitation, not an oversight. This app renders hundreds of
   `onclick=`/`onchange=`/`oninput=` attributes as part of its normal template
@@ -24,8 +29,9 @@ Key points (full rationale is in comments right above the tag):
   - Fully closing it means migrating all inline handler attributes to
     `addEventListener` (event delegation), which is a much larger refactor
     than what was asked for here and was not done in this patch.
-- `worker-src` includes `cdnjs.cloudflare.com` because pdf.js loads its
-  worker script from there.
+- `worker-src` is `'self'` only — pdf.js now loads its worker script from
+  `./lib/pdf.worker.min.js` (same origin), so no external worker-src origin
+  is needed.
 - `connect-src` includes `open.er-api.com` (the exchange-rate API this app
   calls) in addition to `'self'`.
 - `img-src` includes `data:` and `blob:` because attachments are rendered
@@ -35,35 +41,33 @@ Key points (full rationale is in comments right above the tag):
   served by a real HTTP server, set a `Content-Security-Policy` response
   header instead (and add `frame-ancestors 'none'` there).
 
-## 2. SRI (integrity + crossorigin) — placeholders only, needs your action
+## 2. SRI (integrity + crossorigin) — no longer applicable
 
-`index.html` now has `integrity="sha384-REPLACE_WITH_REAL_HASH_..."` and
-`crossorigin="anonymous"` on the three CDN `<script>` tags. **The hash values
-are placeholders and will not work as-is** — I could not compute the real
-hashes from this sandbox: it has no outbound network access for hashing, and
-fetching the files back through my tools only returns them as opaque binary,
-not bytes I can pipe into a hash function. Pasting a hash I hadn't actually
-verified would be worse than leaving it blank, since a wrong hash just fails
-closed (browser refuses to load the script) — better to generate it properly.
+Earlier versions of this app loaded chart.js and Dexie from `cdn.jsdelivr.net`
+(and, before that, pdf.js from `cdnjs.cloudflare.com`), so `index.html` had
+`integrity="sha384-..."` / `crossorigin="anonymous"` attributes on those
+`<script>` tags to guard against a compromised or malicious CDN response.
 
-Generate the real hashes yourself with:
+All three libraries are now vendored locally under `./lib/`:
 
-```bash
-for url in \
-  "https://cdn.jsdelivr.net/npm/[email protected]/dist/chart.umd.min.js" \
-  "https://cdn.jsdelivr.net/npm/[email protected]/dist/dexie.min.js" \
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; do
-  echo "$url"
-  curl -s "$url" | openssl dgst -sha384 -binary | openssl base64 -A
-  echo
-done
-```
+- `./lib/pdf.min.js` + `./lib/pdf.worker.min.js` — pdf.js 3.11.174
+- `./lib/dexie.min.js` — Dexie 3.2.4, the package's own published minified
+  build, copied as-is
+- `./lib/chart.umd.min.js` — chart.js 4.4.1. The npm package for this
+  version doesn't publish a minified UMD build (only an unminified
+  `dist/chart.umd.js`), so this was minified from that exact same-version
+  source using `terser` — the same content jsdelivr's `.min.js` URL would
+  have served, just built locally instead of fetched from a CDN.
 
-Each output line is the value to put after `sha384-` (keep the `sha384-`
-prefix in the attribute). Alternatively use https://www.srihash.org/ with
-each URL. Do this right before you deploy, from a link you trust, and pin
-the exact version in the URL (already done here) — SRI only works for
-versioned, unchanging files.
+SRI exists to protect against a third-party host serving different bytes
+than expected. That risk doesn't apply to same-origin files you host and
+control yourself, so there's nothing left to pin a hash against, and the
+`<script>` tags no longer carry `integrity=`/`crossorigin=` attributes at
+all. If you ever update one of these libraries by re-fetching from its
+source (npm, a CDN, GitHub releases), verify the new file's checksum
+against the publisher's published hash before swapping it into `./lib/` —
+that's the same trust step SRI used to automate, just done once at update
+time instead of on every page load.
 
 ## 3. innerHTML / escaping audit — done
 
@@ -135,9 +139,16 @@ after you pull this in, to confirm text still renders normally.
 
 ## Files changed / added
 
-- `index.html` — CSP meta tag, SRI attributes, inline scripts extracted
-- `js/pdf-worker-init.js` — new (was inline)
+- `index.html` — CSP meta tag now `script-src 'self'` with no CDN origin at
+  all; SRI attributes removed (nothing left to pin); inline scripts
+  extracted; all three `<script>` tags point at `./lib/`
+- `js/pdf-worker-init.js` — new (was inline); worker path now `./lib/`
 - `js/app.js` — new (was inline); now also contains `escapeHtml()` and
   ~132 call sites wrapped with it
-- `service-worker.js` — cache version bumped, new JS files added to the
-  app-shell cache list
+- `lib/chart.umd.min.js`, `lib/dexie.min.js`, `lib/pdf.min.js`,
+  `lib/pdf.worker.min.js` — new; vendored local copies of all third-party
+  libraries, replacing the jsdelivr/cdnjs CDN loads
+- `service-worker.js` — cache version bumped (now v7); rewritten so the
+  entire app, including the vendored libraries, is one same-origin app
+  shell — the separate "best-effort CDN" caching tier was removed since
+  there's no CDN left to cache from
