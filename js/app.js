@@ -1,3 +1,21 @@
+// --- App version (display label only) --------------------------------------
+// This is purely a "what code shipped in this build" label shown in the
+// version badge (#versionBadge, see index.html). It is NOT the same thing as
+// CACHE_VERSION in service-worker.js, which controls actual cache busting —
+// the two live in different files and do not sync automatically.
+// If you bump one, bump the other too. See the matching reminder comment
+// near CACHE_VERSION in service-worker.js, and the deploy checklist in
+// README.md, which covers updating both together.
+const APP_VERSION = 'v5';
+const APP_VERSION_DATE = '2026-08-09';
+
+(function renderVersionBadge() {
+  const badge = document.getElementById('versionBadge');
+  if (badge) {
+    badge.textContent = `${APP_VERSION} · ${APP_VERSION_DATE}`;
+  }
+})();
+
 // --- HTML-escaping helper -------------------------------------------------
 // This function did not exist anywhere in the original codebase. ~150 places
 // assign to .innerHTML using template strings that interpolate user-entered

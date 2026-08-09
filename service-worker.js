@@ -9,6 +9,12 @@
  * Bump CACHE_VERSION whenever index.html or its assets change,
  * so returning visitors pick up the new version instead of a
  * stale cached copy.
+ *
+ * NOTE: This is separate from APP_VERSION / APP_VERSION_DATE in
+ * js/app.js (the display label shown in the version badge). They
+ * do not sync automatically — if you bump this, bump that too.
+ * See the matching reminder comment near APP_VERSION in js/app.js,
+ * and the deploy checklist in README.md.
  */
 
 const CACHE_VERSION = 'v5';

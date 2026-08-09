@@ -151,6 +151,25 @@
   #attachmentViewerModal { z-index: 1100; }
   /* Lock screen must sit above absolutely everything else, including other modals, so auto-lock always covers the full app */
   #unlockOverlay { z-index: 9999; }
+  /* Version badge: a "what code shipped" label, not a "what the browser is running" guarantee.
+     Sits above the lock screen (higher z-index than #unlockOverlay) and lives outside any
+     .modal-overlay, so it's visible even before the passcode is entered. Text is filled in by
+     js/app.js from APP_VERSION / APP_VERSION_DATE — see the reminder comment there. */
+  #versionBadge {
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    z-index: 10000;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Courier New', monospace;
+    color: #a0aec0;
+    background: rgba(45,55,72,0.55);
+    border-radius: 6px;
+    pointer-events: none;
+    user-select: none;
+    letter-spacing: 0.02em;
+  }
   .modal-overlay.active { display: flex; }
   .modal { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative; }
   .modal-close-x { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border: none; background: #f7fafc; border-radius: 50%; font-size: 16px; line-height: 1; cursor: pointer; color: #718096; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
@@ -266,6 +285,9 @@
 </style>
 </head>
 <body>
+<!-- Version badge: outside the unlock overlay on purpose, so it's visible on the lock
+     screen too (no need to unlock first). Text is set by js/app.js at load time. -->
+<div id="versionBadge" aria-hidden="true"></div>
 <div class="container">
   <header>
     <h1>💼 Wealth Planner</h1>
