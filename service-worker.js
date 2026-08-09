@@ -18,7 +18,7 @@
  * and the deploy checklist in README.md.
  */
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — every same-origin file the app needs, including the
@@ -36,6 +36,7 @@ const APP_SHELL = [
   './icons/favicon-32.png',
   './icons/favicon-16.png',
   './js/app.js',
+  './js/back-nav.js',
   './js/pdf-worker-init.js',
   './lib/chart.umd.min.js',
   './lib/dexie.min.js',

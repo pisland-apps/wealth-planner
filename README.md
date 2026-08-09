@@ -66,6 +66,17 @@ python3 -m http.server 8080
 - 忘记密码将**无法恢复**已加密的数据——请务必牢记密码，或定期导出一份你能记住密码的加密备份
 - 所有数据都保存在**当前浏览器**的 IndexedDB 中，换设备、换浏览器、清除浏览数据都不会同步/保留数据，请使用「Export」功能定期备份
 
+## 📱 移动端「返回」按钮
+
+`js/back-nav.js`（v8 新增，需在 `js/app.js` **之后**加载）让手机/平板的系统「返回」手势或返回键表现为「后退一步」，而不是直接把整个 App 关掉：
+
+- 打开任意弹窗（modal）或附件/PDF 查看器时，会 `history.pushState` 记一笔；返回键触发 `popstate` 时，就调用该弹窗对应的 `closeXxxModal()` 关掉它，而不是退出。
+- 在模块/标签之间切换（例如从 Dashboard 进入 FD 或 Amanah 模块）也会记一笔，返回键会回到切换前的那个标签/模块。
+- 弹窗如果是被 Save/Cancel 等应用内代码关掉的（不是通过返回键），脚本会自动把对应的历史记录也一并消耗掉，避免用户还要多按一次「返回」才有反应。
+- 只有已经回到最初的根屏幕（Dashboard）且没有任何弹窗打开时，再按返回键才会是浏览器/系统默认行为（退出 App），这是符合预期的。
+- 密码锁屏（`unlockOverlay`）不在这套机制里——不允许用返回键绕过锁屏。
+- 这套逻辑完全靠观察现有的 `.modal-overlay`/`.section` 元素上 `active` class 的增减来实现，**没有改动**任何原有的 `openXxxModal()`/`closeXxxModal()`/`switchTab()`/`switchModule()` 函数本身，因此以后新增的弹窗只要沿用同样的 `id="fooModal"` + `function closeFooModal()` 命名习惯，会自动被这套返回键逻辑覆盖到。
+
 ## 🛠️ 部署清单（每次发版都要做）
 
 页面右下角有一个小小的版本角标（即使在锁屏、还没输入密码时也能看到），显示的是 `APP_VERSION · APP_VERSION_DATE`。这个角标只能告诉你**这次发布打包了什么代码**，不能告诉你**浏览器里实际在跑什么代码**——如果部署后角标显示的版本号跟你预期的对不上，说明是浏览器/Service Worker 还在用旧缓存，请强制刷新（Ctrl/Cmd+Shift+R）或去 devtools 里清掉该站点的 Service Worker / Cache，而不要误以为是部署没生效。
