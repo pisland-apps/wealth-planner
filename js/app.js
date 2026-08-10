@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
@@ -993,12 +993,19 @@ async function renderDashboard() {
   try { renderDashboardHoldings(funds, transactions); } catch (e) { console.error('renderDashboardHoldings failed:', e); }
 }
 
-async function renderDashFdMaturedNotice() {
-  const container = document.getElementById('dash-fd-matured-notice');
+// Shared by both dashboards that should surface this warning: the Unit
+// Trust module's "Portfolio Dashboard" sub-tab, and the top-level "💎 My
+// Wealth" dashboard (the app's actual home/landing tab). containerId picks
+// which one to render into; ownerFilterValue is that page's own owner
+// filter ('All', a member id, or — for My Wealth — 'joint').
+async function renderFdMaturedNoticeInto(containerId, ownerFilterValue) {
+  const container = document.getElementById(containerId);
   if (!container) return;
   let deposits = await encGetAll('fixedDeposits');
-  if (dashOwnerFilter !== 'All') {
-    const fid = parseInt(dashOwnerFilter);
+  if (ownerFilterValue === 'joint') {
+    deposits = deposits.filter(f => (f.ownerIds || []).length > 1);
+  } else if (ownerFilterValue !== 'All' && ownerFilterValue != null) {
+    const fid = parseInt(ownerFilterValue);
     deposits = deposits.filter(f => (f.ownerIds || []).includes(fid));
   }
   const matured = deposits.filter(isFdOverdue).sort((a, b) => new Date(a.maturityDate) - new Date(b.maturityDate));
@@ -1013,6 +1020,11 @@ async function renderDashFdMaturedNotice() {
     <ul style="margin:8px 0 0;padding-left:20px;font-size:14px;color:#4a5568;">${items}</ul>
   </div>`;
 }
+
+async function renderDashFdMaturedNotice() {
+  await renderFdMaturedNoticeInto('dash-fd-matured-notice', dashOwnerFilter);
+}
+
 
 function renderCurrencyGroups(activeFunds, transactions) {
   const container = document.getElementById('dash-currency-groups');
@@ -6008,6 +6020,7 @@ async function computeWealthByOwner(filterValue) {
 
 async function renderWealthAll() {
   await renderWealthOwnerFilterOptions();
+  try { await renderFdMaturedNoticeInto('wealth-fd-matured-notice', wealthOwnerFilter); } catch (e) { console.error('renderFdMaturedNoticeInto (wealth) failed:', e); }
   // 'All' → everything combined. 'joint' → joint-only holdings. A specific member →
   // that member's SOLE holdings only; anything they co-own lives under the 'Joint' filter
   // instead, so a member's total never silently includes joint funds.
@@ -7275,7 +7288,7 @@ async function mypRenderBaselineComparisonTable() {
       lastBaselineVal = val;
       cols += `<td style="text-align:center;color:#3182ce;font-weight:600;">${formatCurrency(val)}</td>`;
     });
-    cols += `<td style="text-align:center;">$ <input type="number" class="myp-actual-input" style="width:120px;text-align:right;" value="${actualVal}" placeholder="Enter actual" data-action="mypSaveActualResult" data-arg="${yr}"></td>`;
+    cols += `<td style="text-align:center;">$ <input type="number" class="myp-actual-input" style="width:120px;text-align:right;" value="${actualVal}" placeholder="Enter actual" autocomplete="off" data-action="mypSaveActualResult" data-arg="${yr}"></td>`;
     cols += mypVarianceCellsHtml(actualVal, lastBaselineVal);
     return `<tr data-year="${yr}" data-baseline="${lastBaselineVal}">${cols}</tr>`;
   }).join('');
