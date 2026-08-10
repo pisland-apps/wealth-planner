@@ -6,8 +6,8 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v10';
-const APP_VERSION_DATE = '2026-08-10';
+const APP_VERSION = 'v11';
+const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
   const badge = document.getElementById('versionBadge');
@@ -935,6 +935,17 @@ function calcFundMetrics(fund, transactions) {
 
 // ==================== DASHBOARD ====================
 async function renderDashboard() {
+  // Render the matured-FD notice first and independently of everything else
+  // below. It used to be the LAST line in this function, after the chart
+  // renders — so if renderAllocationChart/renderPerformanceChart/etc threw
+  // (e.g. a Chart.js edge case with a particular data shape), execution
+  // stopped right there and this call was silently skipped, even though the
+  // stat numbers above it had already been filled in. That made the notice
+  // look like it "never shows" on the main dashboard even when FDs really
+  // were overdue. It doesn't depend on funds/transactions, so there's no
+  // reason it needs to wait for them anyway.
+  try { await renderDashFdMaturedNotice(); } catch (e) { console.error('renderDashFdMaturedNotice failed:', e); }
+
   let funds = await encGetAll('funds');
   const transactions = await encGetAll('transactions');
   if (dashOwnerFilter !== 'All') { const fid = parseInt(dashOwnerFilter); funds = funds.filter(f => (f.ownerIds || []).includes(fid)); }
@@ -974,11 +985,12 @@ async function renderDashboard() {
   document.getElementById('dash-pl-card').className = 'stat-card ' + (pl >= 0 ? 'green' : 'red');
   document.getElementById('dash-annualised').textContent = annualised.toFixed(2) + '%';
   document.getElementById('dash-dividends').textContent = formatCurrency(totalDividends);
-  renderCurrencyGroups(activeFunds, transactions);
-  renderAllocationChart(funds, transactions);
-  renderPerformanceChart(funds, transactions);
-  renderDashboardHoldings(funds, transactions);
-  await renderDashFdMaturedNotice();
+  // Each of these is independent UI; wrap separately so a failure in one
+  // (e.g. a chart edge case) can't stop the others from rendering.
+  try { renderCurrencyGroups(activeFunds, transactions); } catch (e) { console.error('renderCurrencyGroups failed:', e); }
+  try { renderAllocationChart(funds, transactions); } catch (e) { console.error('renderAllocationChart failed:', e); }
+  try { renderPerformanceChart(funds, transactions); } catch (e) { console.error('renderPerformanceChart failed:', e); }
+  try { renderDashboardHoldings(funds, transactions); } catch (e) { console.error('renderDashboardHoldings failed:', e); }
 }
 
 async function renderDashFdMaturedNotice() {
@@ -7216,6 +7228,19 @@ function mypUpdateYearSnapshot() {
 }
 
 // ---------- Baseline vs. Actual ----------
+// Shared by the full table render and the single-row update below, so both
+// always agree on how Variance $ / Variance % are computed and styled.
+function mypVarianceCellsHtml(actualVal, lastBaselineVal) {
+  if (actualVal !== '' && actualVal != null) {
+    const diff = actualVal - lastBaselineVal;
+    const pct = lastBaselineVal !== 0 ? ((diff / lastBaselineVal) * 100).toFixed(1) : '0.0';
+    const color = diff > 0 ? '#48bb78' : (diff < 0 ? '#f56565' : '#718096');
+    const sign = diff > 0 ? '+' : '';
+    return `<td style="text-align:right;color:${color};font-weight:600;">${sign}${formatCurrency(diff)}</td><td style="text-align:right;color:${color};font-weight:600;">${sign}${pct}%</td>`;
+  }
+  return '<td style="text-align:right;color:#a0aec0;">—</td><td style="text-align:right;color:#a0aec0;">—</td>';
+}
+
 async function mypRenderBaselineComparisonTable() {
   if (!mypForecastData.length) return;
   const baselines = (await encGetAll('mypBaselines')).filter(b => b.planId === currentMypPlanId);
@@ -7251,16 +7276,8 @@ async function mypRenderBaselineComparisonTable() {
       cols += `<td style="text-align:center;color:#3182ce;font-weight:600;">${formatCurrency(val)}</td>`;
     });
     cols += `<td style="text-align:center;">$ <input type="number" class="myp-actual-input" style="width:120px;text-align:right;" value="${actualVal}" placeholder="Enter actual" data-action="mypSaveActualResult" data-arg="${yr}"></td>`;
-    if (actualVal !== '' && actualVal != null) {
-      const diff = actualVal - lastBaselineVal;
-      const pct = lastBaselineVal !== 0 ? ((diff / lastBaselineVal) * 100).toFixed(1) : '0.0';
-      const color = diff > 0 ? '#48bb78' : (diff < 0 ? '#f56565' : '#718096');
-      const sign = diff > 0 ? '+' : '';
-      cols += `<td style="text-align:right;color:${color};font-weight:600;">${sign}${formatCurrency(diff)}</td><td style="text-align:right;color:${color};font-weight:600;">${sign}${pct}%</td>`;
-    } else {
-      cols += '<td style="text-align:right;color:#a0aec0;">—</td><td style="text-align:right;color:#a0aec0;">—</td>';
-    }
-    return `<tr>${cols}</tr>`;
+    cols += mypVarianceCellsHtml(actualVal, lastBaselineVal);
+    return `<tr data-year="${yr}" data-baseline="${lastBaselineVal}">${cols}</tr>`;
   }).join('');
 }
 
@@ -7296,7 +7313,30 @@ async function mypSaveActualResult(year, val) {
     if (existing) await encUpdate('mypActuals', existing.id, { year, amount });
     else await encAdd('mypActuals', { year, amount, planId: currentMypPlanId });
   }
-  await mypRenderBaselineComparisonTable();
+  // Previously this called mypRenderBaselineComparisonTable(), which rebuilds
+  // the ENTIRE tbody (every row's <input>, all years) on every save. That
+  // save fires on 'change' (blur) — so the moment you clicked/tabbed from
+  // one year's "Actual (EOY)" box into the next one to keep entering data,
+  // the blur on the first box triggered this async save, which then replaced
+  // the whole table (including the box you'd just focused) with fresh DOM
+  // out from under you. The new box was never focused, so anything you typed
+  // next appeared to do nothing — only the very first row you touched ever
+  // "took". Updating just this row's Variance cells in place, without
+  // touching any <input>, fixes that: focus is never disturbed, so you can
+  // tab/click through every year and keep typing normally.
+  const row = document.querySelector(`#mypBaselineTableBody tr[data-year="${year}"]`);
+  if (!row) { await mypRenderBaselineComparisonTable(); return; } // fallback if row isn't there for some reason
+  const lastBaselineVal = parseFloat(row.dataset.baseline) || 0;
+  const actualVal = (val === '' || val === null) ? '' : (parseFloat(val) || 0);
+  const cells = row.querySelectorAll('td');
+  const varianceHtml = mypVarianceCellsHtml(actualVal, lastBaselineVal);
+  const tmp = document.createElement('tr');
+  tmp.innerHTML = varianceHtml;
+  const newCells = Array.from(tmp.children);
+  if (cells.length >= 2 && newCells.length === 2) {
+    row.replaceChild(newCells[0], cells[cells.length - 2]);
+    row.replaceChild(newCells[1], cells[cells.length - 1]);
+  }
 }
 
 // ---------- PWA: Service Worker registration ----------
