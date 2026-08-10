@@ -1,0 +1,34 @@
+# _headers — for static hosts that read this file (Cloudflare Pages, Netlify).
+# GitHub Pages does NOT support _headers; this is prep for moving off it.
+# If the new host is neither Cloudflare Pages nor Netlify (e.g. Vercel, a custom
+# server, S3+CloudFront), these same values need to be set via that platform's
+# own header mechanism — this file's syntax won't be picked up automatically.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://open.er-api.com; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+
+# HTML shell and service worker: never cache, so a deployed update (and any
+# CSP/security fix) reaches the user on next load instead of being served stale.
+/index.html
+  Cache-Control: no-cache
+
+/service-worker.js
+  Cache-Control: no-cache
+
+/manifest.json
+  Cache-Control: no-cache
+
+# Vendored libraries and icons: content-hash-free filenames, so cache long but
+# not "immutable" (a future update to e.g. lib/pdf.min.js needs a real filename
+# change or a hard refresh to bust this — bump filenames if you ever patch these).
+/lib/*
+  Cache-Control: public, max-age=31536000
+
+/icons/*
+  Cache-Control: public, max-age=31536000
