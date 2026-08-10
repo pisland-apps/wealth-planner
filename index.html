@@ -23,13 +23,14 @@
     allowlisted here at all any more.
     No 'unsafe-inline' here, which is why the two inline <script> blocks that used to
     live in this file were moved out to ./js/pdf-worker-init.js and ./js/app.js.
-  - script-src-attr: this app still uses onclick/onchange/oninput attributes throughout
-    the rendered HTML (hundreds of them), so attribute-based handlers need 'unsafe-inline'.
-    This is a real, intentional gap: if unescaped user data ever reaches innerHTML with an
-    onerror=/onclick= payload, this directive lets it run. Splitting script-src-attr out
-    from script-src at least keeps *that* weaker rule from also covering <script> elements.
-    Closing this gap fully means migrating away from inline event handler attributes to
-    addEventListener-based rendering — a larger refactor, not done here.
+  - script-src-attr: this app used to rely on onclick/onchange/oninput attributes throughout
+    the rendered HTML. As of this version those have all been migrated to data-action
+    attributes plus a delegated addEventListener dispatcher (see js/app.js, ACTIONS table),
+    so this directive no longer needs 'unsafe-inline' and has been removed entirely —
+    it now falls back to script-src ('self'), which blocks inline attribute handlers too.
+    Previously this was a real gap: unescaped user data reaching innerHTML with an
+    onerror=/onclick= payload would have executed. That class of bug is now structurally
+    closed: data-action values are read as plain text via .dataset, never as code.
   - style-src: 'unsafe-inline' is required because of inline style="" attributes and the
     <style> block below; not a script-execution risk on its own.
   - connect-src: 'self' plus the exchange-rate API this app calls.
@@ -44,7 +45,6 @@
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self';
-  script-src-attr 'unsafe-inline';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   font-src 'self';
@@ -297,44 +297,44 @@
     <p>Unit trust, Amanah Saham, and more — all in one place</p>
   </header>
   <div class="module-tabs" id="moduleTabs">
-    <button class="module-tab" data-module="wealth" onclick="switchModule('wealth')">💎 My Wealth</button>
-    <button class="module-tab" data-module="kwsp" onclick="switchModule('kwsp')">🏦 KWSP</button>
-    <button class="module-tab" data-module="fd" onclick="switchModule('fd')">🏦 Fixed Deposit</button>
-    <button class="module-tab" data-module="amanah" onclick="switchModule('amanah')">🏦 Amanah Saham</button>
-    <button class="module-tab active" data-module="unittrust" onclick="switchModule('unittrust')">📊 Unit Trust</button>
-    <button class="module-tab" data-module="realestate" onclick="switchModule('realestate')">🏠 Real Estate</button>
-    <button class="module-tab" data-module="fx" onclick="switchModule('fx')">💵 Foreign Currency</button>
-    <button class="module-tab" data-module="forecast" onclick="switchModule('forecast')">📈 Income Forecast</button>
-    <button class="module-tab" data-module="planner" onclick="switchModule('planner')">🔮 Multi-Year Planner</button>
+    <button class="module-tab" data-module="wealth" data-action="switchModule" data-arg="wealth">💎 My Wealth</button>
+    <button class="module-tab" data-module="kwsp" data-action="switchModule" data-arg="kwsp">🏦 KWSP</button>
+    <button class="module-tab" data-module="fd" data-action="switchModule" data-arg="fd">🏦 Fixed Deposit</button>
+    <button class="module-tab" data-module="amanah" data-action="switchModule" data-arg="amanah">🏦 Amanah Saham</button>
+    <button class="module-tab active" data-module="unittrust" data-action="switchModule" data-arg="unittrust">📊 Unit Trust</button>
+    <button class="module-tab" data-module="realestate" data-action="switchModule" data-arg="realestate">🏠 Real Estate</button>
+    <button class="module-tab" data-module="fx" data-action="switchModule" data-arg="fx">💵 Foreign Currency</button>
+    <button class="module-tab" data-module="forecast" data-action="switchModule" data-arg="forecast">📈 Income Forecast</button>
+    <button class="module-tab" data-module="planner" data-action="switchModule" data-arg="planner">🔮 Multi-Year Planner</button>
   </div>
   <div class="nav-bar">
-    <button class="nav-btn" id="currencyNavBtn" onclick="openCurrencyModal()">💱 Currency</button>
-    <button class="nav-btn" id="encryptionNavBtn" onclick="openEncryptionModal()">🔓 Encryption: Off</button>
-    <button class="nav-btn hidden" id="lockNowBtn" onclick="lockNow()" title="Lock the app immediately">🔒 Lock Now</button>
-    <button class="nav-btn" onclick="openMembersModal()">👥 Members</button>
-    <button class="nav-btn" onclick="openExportModal()">Export</button>
-    <button class="nav-btn" onclick="document.getElementById('importFile').click()">Import</button>
-    <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(this)">
+    <button class="nav-btn" id="currencyNavBtn" data-action="openCurrencyModal">💱 Currency</button>
+    <button class="nav-btn" id="encryptionNavBtn" data-action="openEncryptionModal">🔓 Encryption: Off</button>
+    <button class="nav-btn hidden" id="lockNowBtn" data-action="lockNow" title="Lock the app immediately">🔒 Lock Now</button>
+    <button class="nav-btn" data-action="openMembersModal">👥 Members</button>
+    <button class="nav-btn" data-action="openExportModal">Export</button>
+    <button class="nav-btn" data-action="triggerImportFile">Import</button>
+    <input type="file" id="importFile" class="hidden" accept=".json" data-action="importDataFile">
   </div>
   <div style="font-size: 12px; color: #718096; margin: -8px 0 15px; padding: 0 4px;">🔒 Backups are encrypted by default when exporting — you can choose plaintext instead at export time if you prefer, but keep any plaintext backup file somewhere secure.</div>
   <div class="nav-bar" id="unittrust-subnav">
-    <button class="nav-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
-    <button class="nav-btn" data-tab="funds" onclick="switchTab('funds')">My Funds</button>
-    <button class="nav-btn" data-tab="transactions" onclick="switchTab('transactions')">Transactions</button>
-    <button class="nav-btn" data-tab="closed" onclick="switchTab('closed')">Closed Funds</button>
-    <button class="nav-btn secondary" onclick="openFundModal()">Add Fund</button>
-    <button class="nav-btn secondary" onclick="openTxModal()">Add Transaction</button>
-    <button class="nav-btn" onclick="openPrintOwnerModal()">Print Summary</button>
+    <button class="nav-btn active" data-tab="dashboard" data-action="switchTab" data-arg="dashboard">Dashboard</button>
+    <button class="nav-btn" data-tab="funds" data-action="switchTab" data-arg="funds">My Funds</button>
+    <button class="nav-btn" data-tab="transactions" data-action="switchTab" data-arg="transactions">Transactions</button>
+    <button class="nav-btn" data-tab="closed" data-action="switchTab" data-arg="closed">Closed Funds</button>
+    <button class="nav-btn secondary" data-action="openFundModal">Add Fund</button>
+    <button class="nav-btn secondary" data-action="openTxModal">Add Transaction</button>
+    <button class="nav-btn" data-action="openPrintOwnerModal">Print Summary</button>
   </div>
   <!-- My Wealth Dashboard Section -->
   <div id="wealth" class="section">
     <div class="section-header-row">
       <h2>💎 My Wealth Dashboard</h2>
       <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <select id="wealth-owner-filter" onchange="setWealthOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+        <select id="wealth-owner-filter" data-action="setWealthOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
           <option value="All">👥 All Owners</option>
         </select>
-        <button class="nav-btn" onclick="printWealthReport('All')">🖨️ Print Report</button>
+        <button class="nav-btn" data-action="printWealthReport" data-arg="All">🖨️ Print Report</button>
       </div>
     </div>
     <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Combined net worth across every module — Unit Trust, Amanah Saham, KWSP, Fixed Deposit, Real Estate, and Foreign Currency — converted to your base currency.</p>
@@ -386,7 +386,7 @@
     <div class="section-header-row">
       <h2 style="margin: 0;">Portfolio Dashboard</h2>
       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <select id="dash-owner-filter" onchange="setDashOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+        <select id="dash-owner-filter" data-action="setDashOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
           <option value="All">👥 All Owners</option>
         </select>
         <div style="font-size: 13px; color: #718096;" id="dash-base-currency-note"></div>
@@ -423,9 +423,9 @@
       <div class="section-header-row" style="margin-bottom: 15px;">
         <h3 style="margin: 0;">Daily NAV Update</h3>
         <div class="view-toggle">
-          <button id="nav-view-card-btn" class="view-toggle-btn active" onclick="setNavView('card')">🔲 Card</button>
-          <button id="nav-view-table-btn" class="view-toggle-btn" onclick="setNavView('table')">📋 Table</button>
-          <button id="nav-view-history-btn" class="view-toggle-btn" onclick="setNavView('history')">📜 History</button>
+          <button id="nav-view-card-btn" class="view-toggle-btn active" data-action="setNavView" data-arg="card">🔲 Card</button>
+          <button id="nav-view-table-btn" class="view-toggle-btn" data-action="setNavView" data-arg="table">📋 Table</button>
+          <button id="nav-view-history-btn" class="view-toggle-btn" data-action="setNavView" data-arg="history">📜 History</button>
         </div>
       </div>
       <div id="nav-date-row" style="margin-bottom: 15px;">
@@ -433,7 +433,7 @@
         <input type="date" id="nav-date" style="padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
       </div>
       <div id="nav-update-list"></div>
-      <button class="btn btn-primary" id="nav-update-btn" onclick="updateAllNav()" style="margin-top: 15px;">Update All Prices</button>
+      <button class="btn btn-primary" id="nav-update-btn" data-action="updateAllNav" style="margin-top: 15px;">Update All Prices</button>
     </div>
     <div class="chart-grid">
       <div class="chart-card">
@@ -472,12 +472,12 @@
       <div class="section-header-row">
         <h2>My Funds</h2>
         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-          <select id="funds-owner-filter" onchange="setFundsOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+          <select id="funds-owner-filter" data-action="setFundsOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
             <option value="All">👥 All Owners</option>
           </select>
           <div class="view-toggle">
-            <button id="funds-view-card-btn" class="view-toggle-btn active" onclick="setFundsView('card')">🔲 Card</button>
-            <button id="funds-view-list-btn" class="view-toggle-btn" onclick="setFundsView('list')">📋 List</button>
+            <button id="funds-view-card-btn" class="view-toggle-btn active" data-action="setFundsView" data-arg="card">🔲 Card</button>
+            <button id="funds-view-list-btn" class="view-toggle-btn" data-action="setFundsView" data-arg="list">📋 List</button>
           </div>
         </div>
       </div>
@@ -486,12 +486,12 @@
         <div class="icon">📭</div>
         <h3>No funds yet</h3>
         <p>Add your first fund to start tracking</p>
-        <button class="btn btn-primary" onclick="openFundModal()" style="margin-top: 15px;">Add Fund</button>
+        <button class="btn btn-primary" data-action="openFundModal" style="margin-top: 15px;">Add Fund</button>
       </div>
     </div>
     <div id="fund-detail-view" class="hidden">
       <div class="breadcrumb">
-        <a onclick="showFundsList()">My Funds</a>
+        <a data-action="showFundsList">My Funds</a>
         <span>/</span>
         <span id="detail-fund-name">Fund Name</span>
       </div>
@@ -511,10 +511,10 @@
         <div class="detail-stat"><div class="label">Years Held</div><div class="value" id="detail-years">0</div></div>
       </div>
       <div style="display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap;">
-        <button class="btn btn-primary" onclick="openTxModalForCurrentFund()">Add Transaction</button>
-        <button class="btn btn-secondary" onclick="printFundReport()">Print Report</button>
-        <button class="btn btn-success" onclick="openFundModal(currentFundId)">Edit Fund</button>
-        <button class="btn btn-danger" onclick="deleteCurrentFund()">Delete Fund</button>
+        <button class="btn btn-primary" data-action="openTxModalForCurrentFund">Add Transaction</button>
+        <button class="btn btn-secondary" data-action="printFundReport">Print Report</button>
+        <button class="btn btn-success" data-action="editCurrentFund">Edit Fund</button>
+        <button class="btn btn-danger" data-action="deleteCurrentFund">Delete Fund</button>
       </div>
       <div class="chart-card" style="margin-bottom: 25px;">
         <h3>Fund Value Over Time</h3>
@@ -559,12 +559,12 @@
     <div class="section-header-row">
       <h2>Closed Funds (Fully Redeemed)</h2>
       <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <select id="closed-owner-filter" onchange="setClosedOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+        <select id="closed-owner-filter" data-action="setClosedOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
           <option value="All">👥 All Owners</option>
         </select>
         <div class="view-toggle">
-          <button id="closed-view-card-btn" class="view-toggle-btn" onclick="setClosedView('card')">🔲 Card</button>
-          <button id="closed-view-list-btn" class="view-toggle-btn active" onclick="setClosedView('list')">📋 List</button>
+          <button id="closed-view-card-btn" class="view-toggle-btn" data-action="setClosedView" data-arg="card">🔲 Card</button>
+          <button id="closed-view-list-btn" class="view-toggle-btn active" data-action="setClosedView" data-arg="list">📋 List</button>
         </div>
       </div>
     </div>
@@ -602,11 +602,11 @@
   <div class="section-header-row">
     <h2>🏦 KWSP</h2>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="kwsp-owner-filter" onchange="setKwspOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="kwsp-owner-filter" data-action="setKwspOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">👥 All Owners</option>
       </select>
-      <button class="nav-btn" onclick="openPrintOwnerModal('kwsp')">🖨️ Print Report</button>
-      <button class="btn btn-primary" onclick="openKwspAccountModal()">+ Add Account</button>
+      <button class="nav-btn" data-action="openPrintOwnerModal" data-arg="kwsp">🖨️ Print Report</button>
+      <button class="btn btn-primary" data-action="openKwspAccountModal">+ Add Account</button>
     </div>
   </div>
   <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Employees Provident Fund accounts — balance grows from employee/employer contributions plus the annual dividend declared each year.</p>
@@ -634,8 +634,8 @@
   <div class="section-header-row">
     <h3 style="margin: 0;">Accounts</h3>
     <div class="view-toggle">
-      <button id="kwsp-view-card-btn" class="view-toggle-btn active" onclick="setKwspView('card')">🔲 Card</button>
-      <button id="kwsp-view-list-btn" class="view-toggle-btn" onclick="setKwspView('list')">📋 List</button>
+      <button id="kwsp-view-card-btn" class="view-toggle-btn active" data-action="setKwspView" data-arg="card">🔲 Card</button>
+      <button id="kwsp-view-list-btn" class="view-toggle-btn" data-action="setKwspView" data-arg="list">📋 List</button>
     </div>
   </div>
   <div id="kwsp-account-grid" class="fund-grid" style="margin-bottom: 30px;"></div>
@@ -643,15 +643,15 @@
     <div class="icon">📭</div>
     <h3>No KWSP accounts yet</h3>
     <p>Add an account to start tracking contributions and dividends</p>
-    <button class="btn btn-primary" onclick="openKwspAccountModal()" style="margin-top: 15px;">+ Add Account</button>
+    <button class="btn btn-primary" data-action="openKwspAccountModal" style="margin-top: 15px;">+ Add Account</button>
   </div>
   <div class="section-header-row" id="kwsp-ledger-anchor">
     <h3 style="margin: 0;">📒 Ledger</h3>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="kwsp-ledger-account-filter" onchange="setKwspLedgerAccountFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="kwsp-ledger-account-filter" data-action="setKwspLedgerAccountFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">📒 All Accounts</option>
       </select>
-      <button class="btn btn-primary" onclick="openKwspTxModal(kwspLedgerAccountFilter !== 'All' ? parseInt(kwspLedgerAccountFilter) : undefined)">+ Add Transaction</button>
+      <button class="btn btn-primary" data-action="addKwspTxFiltered">+ Add Transaction</button>
     </div>
   </div>
   <div class="table-scroll">
@@ -666,11 +666,11 @@
   <div class="section-header-row">
     <h2>🏦 Fixed Deposit</h2>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="fd-owner-filter" onchange="setFdOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="fd-owner-filter" data-action="setFdOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">👥 All Owners</option>
       </select>
-      <button class="nav-btn" onclick="openPrintOwnerModal('fd')">🖨️ Print Report</button>
-      <button class="btn btn-primary" onclick="openFdModal()">+ Add Fixed Deposit</button>
+      <button class="nav-btn" data-action="openPrintOwnerModal" data-arg="fd">🖨️ Print Report</button>
+      <button class="btn btn-primary" data-action="openFdModal">+ Add Fixed Deposit</button>
     </div>
   </div>
   <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Fixed deposits across any currency and bank. Mark "Auto-Renew" for deposits that should roll over at maturity — when you process a maturity, renewed deposits create a new term automatically and every maturity (renewed or not) is logged below for reference.</p>
@@ -697,8 +697,8 @@
   <div class="section-header-row">
     <h3 style="margin: 0;">Deposits</h3>
     <div class="view-toggle">
-      <button id="fd-view-card-btn" class="view-toggle-btn active" onclick="setFdView('card')">🔲 Card</button>
-      <button id="fd-view-list-btn" class="view-toggle-btn" onclick="setFdView('list')">📋 List</button>
+      <button id="fd-view-card-btn" class="view-toggle-btn active" data-action="setFdView" data-arg="card">🔲 Card</button>
+      <button id="fd-view-list-btn" class="view-toggle-btn" data-action="setFdView" data-arg="list">📋 List</button>
     </div>
   </div>
   <div id="fd-grid" class="fund-grid" style="margin-bottom: 30px;"></div>
@@ -706,7 +706,7 @@
     <div class="icon">📭</div>
     <h3>No fixed deposits yet</h3>
     <p>Add a fixed deposit to start tracking maturity dates and renewals</p>
-    <button class="btn btn-primary" onclick="openFdModal()" style="margin-top: 15px;">+ Add Fixed Deposit</button>
+    <button class="btn btn-primary" data-action="openFdModal" style="margin-top: 15px;">+ Add Fixed Deposit</button>
   </div>
   <div class="section-header-row" id="fd-maturity-anchor">
     <h3 style="margin: 0;">📜 Maturity Records</h3>
@@ -725,11 +725,11 @@
   <div class="section-header-row">
     <h2>🏦 Amanah Saham</h2>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="amanah-owner-filter" onchange="setAmanahOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="amanah-owner-filter" data-action="setAmanahOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">👥 All Owners</option>
       </select>
-      <button class="nav-btn" onclick="openPrintOwnerModal('amanah')">🖨️ Print Report</button>
-      <button class="btn btn-primary" onclick="openAmanahFundModal()">+ Add Scheme</button>
+      <button class="nav-btn" data-action="openPrintOwnerModal" data-arg="amanah">🖨️ Print Report</button>
+      <button class="btn btn-primary" data-action="openAmanahFundModal">+ Add Scheme</button>
     </div>
   </div>
   <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Fixed-price schemes like ASM, ASM2, ASM3, ASB — price is set manually (usually stable at RM1.00) and returns come mainly from dividends rather than price movement.</p>
@@ -752,8 +752,8 @@
   <div class="section-header-row">
     <h3 style="margin: 0;">Schemes</h3>
     <div class="view-toggle">
-      <button id="amanah-view-card-btn" class="view-toggle-btn active" onclick="setAmanahView('card')">🔲 Card</button>
-      <button id="amanah-view-list-btn" class="view-toggle-btn" onclick="setAmanahView('list')">📋 List</button>
+      <button id="amanah-view-card-btn" class="view-toggle-btn active" data-action="setAmanahView" data-arg="card">🔲 Card</button>
+      <button id="amanah-view-list-btn" class="view-toggle-btn" data-action="setAmanahView" data-arg="list">📋 List</button>
     </div>
   </div>
   <div id="amanah-fund-grid" class="fund-grid" style="margin-bottom: 30px;"></div>
@@ -761,15 +761,15 @@
     <div class="icon">📭</div>
     <h3>No Amanah Saham schemes yet</h3>
     <p>Add ASM, ASM2, ASB, or any fixed-price scheme to start tracking</p>
-    <button class="btn btn-primary" onclick="openAmanahFundModal()" style="margin-top: 15px;">+ Add Scheme</button>
+    <button class="btn btn-primary" data-action="openAmanahFundModal" style="margin-top: 15px;">+ Add Scheme</button>
   </div>
   <div class="section-header-row" id="amanah-ledger-anchor">
     <h3 style="margin: 0;">📒 Ledger</h3>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="amanah-ledger-scheme-filter" onchange="setAmanahLedgerSchemeFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="amanah-ledger-scheme-filter" data-action="setAmanahLedgerSchemeFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">📒 All Schemes</option>
       </select>
-      <button class="btn btn-primary" onclick="openAmanahTxModal(amanahLedgerSchemeFilter !== 'All' ? parseInt(amanahLedgerSchemeFilter) : undefined)">+ Add Transaction</button>
+      <button class="btn btn-primary" data-action="addAmanahTxFiltered">+ Add Transaction</button>
     </div>
   </div>
   <div class="table-scroll">
@@ -784,11 +784,11 @@
   <div class="section-header-row">
     <h2>🏠 Real Estate</h2>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="re-owner-filter" onchange="setReOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="re-owner-filter" data-action="setReOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">👥 All Owners</option>
       </select>
-      <button class="nav-btn" onclick="cleanupDuplicateReLoanEntries()" title="Scan for duplicate Initial Bank Loan Tranche entries and remove the extras.">🧹 Clean Duplicates</button>
-      <button class="btn btn-primary" onclick="openPropertyModal()">+ Add Property</button>
+      <button class="nav-btn" data-action="cleanupDuplicateReLoanEntries" title="Scan for duplicate Initial Bank Loan Tranche entries and remove the extras.">🧹 Clean Duplicates</button>
+      <button class="btn btn-primary" data-action="openPropertyModal">+ Add Property</button>
     </div>
   </div>
   <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Properties, their purchase funding breakdown, rental cashflow, and bank loan / redraw activity — all in one place. Mortgage and redraw balances are calculated automatically from the ledger below, so they always stay in sync.</p>
@@ -819,8 +819,8 @@
   <div class="section-header-row">
     <h3 style="margin: 0;">Properties</h3>
     <div class="view-toggle">
-      <button id="re-view-card-btn" class="view-toggle-btn active" onclick="setReView('card')">🔲 Card</button>
-      <button id="re-view-list-btn" class="view-toggle-btn" onclick="setReView('list')">📋 List</button>
+      <button id="re-view-card-btn" class="view-toggle-btn active" data-action="setReView" data-arg="card">🔲 Card</button>
+      <button id="re-view-list-btn" class="view-toggle-btn" data-action="setReView" data-arg="list">📋 List</button>
     </div>
   </div>
   <div id="re-property-grid" class="fund-grid" style="margin-bottom: 30px;"></div>
@@ -828,15 +828,15 @@
     <div class="icon">📭</div>
     <h3>No properties yet</h3>
     <p>Add a property to start tracking its purchase funding, rental cashflow, and loan activity</p>
-    <button class="btn btn-primary" onclick="openPropertyModal()" style="margin-top: 15px;">+ Add Property</button>
+    <button class="btn btn-primary" data-action="openPropertyModal" style="margin-top: 15px;">+ Add Property</button>
   </div>
   <div class="section-header-row" id="re-cashflow-anchor">
     <h3 style="margin: 0;">📒 Rental Cashflow Ledger</h3>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="re-cashflow-property-filter" onchange="setReCashflowPropertyFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="re-cashflow-property-filter" data-action="setReCashflowPropertyFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">🏠 All Properties</option>
       </select>
-      <button class="btn btn-primary" onclick="openReTxModal(reCashflowPropertyFilter !== 'All' ? parseInt(reCashflowPropertyFilter) : undefined)">+ Add Entry</button>
+      <button class="btn btn-primary" data-action="addReTxFiltered">+ Add Entry</button>
     </div>
   </div>
   <div class="table-scroll">
@@ -848,10 +848,10 @@
   <div class="section-header-row" id="re-loan-anchor" style="margin-top: 25px;">
     <h3 style="margin: 0;">🏦 Bank Loan & Redraw Ledger</h3>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="re-loan-property-filter" onchange="setReLoanPropertyFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="re-loan-property-filter" data-action="setReLoanPropertyFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">🏠 All Properties</option>
       </select>
-      <button class="btn btn-primary" onclick="openReLoanTxModal(reLoanPropertyFilter !== 'All' ? parseInt(reLoanPropertyFilter) : undefined)">+ Add Entry</button>
+      <button class="btn btn-primary" data-action="addReLoanTxFiltered">+ Add Entry</button>
     </div>
   </div>
   <div class="table-scroll">
@@ -866,15 +866,15 @@
   <div class="section-header-row">
     <h2>💵 Foreign Currency</h2>
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <select id="fx-owner-filter" onchange="setFxOwnerFilter(this.value)" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
+      <select id="fx-owner-filter" data-action="setFxOwnerFilter" style="padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; min-height: 38px;">
         <option value="All">👥 All Owners</option>
       </select>
-      <button class="btn btn-primary" onclick="openFxTxModal()">+ Add Cash Transaction</button>
-      <button class="nav-btn" onclick="openCurrencyModal()">💱 Currency Settings</button>
-      <button class="nav-btn" onclick="openPrintOwnerModal('fx')">🖨️ Print Report</button>
+      <button class="btn btn-primary" data-action="openFxTxModal">+ Add Cash Transaction</button>
+      <button class="nav-btn" data-action="openCurrencyModal">💱 Currency Settings</button>
+      <button class="nav-btn" data-action="openPrintOwnerModal" data-arg="fx">🖨️ Print Report</button>
       <div class="view-toggle">
-        <button id="fx-view-card-btn" class="view-toggle-btn active" onclick="setFxView('card')">🔲 Card</button>
-        <button id="fx-view-list-btn" class="view-toggle-btn" onclick="setFxView('list')">📋 List</button>
+        <button id="fx-view-card-btn" class="view-toggle-btn active" data-action="setFxView" data-arg="card">🔲 Card</button>
+        <button id="fx-view-list-btn" class="view-toggle-btn" data-action="setFxView" data-arg="list">📋 List</button>
       </div>
     </div>
   </div>
@@ -914,7 +914,7 @@
         <div class="icon">💵</div>
         <h3>No foreign cash yet</h3>
         <p>Log a Buy transaction to start tracking physical foreign currency you're holding</p>
-        <button class="btn btn-primary" onclick="openFxTxModal()" style="margin-top: 15px;">+ Add Cash Transaction</button>
+        <button class="btn btn-primary" data-action="openFxTxModal" style="margin-top: 15px;">+ Add Cash Transaction</button>
       </div>
     </div>
     <div style="flex:1; min-width:220px; max-width:320px;">
@@ -941,7 +941,7 @@
 <div id="forecast" class="section">
   <div class="section-header-row">
     <h2>📈 Income Forecast</h2>
-    <button class="btn btn-primary" onclick="openForecastModal()">+ New Forecast</button>
+    <button class="btn btn-primary" data-action="openForecastModal">+ New Forecast</button>
   </div>
   <p style="color: #718096; font-size: 13px; margin: -10px 0 20px;">Project expected yearly/monthly income by picking funds/accounts (with your own rate assumptions) and rented properties (with expected rent). Save as many scenarios as you like — nothing here affects your real transactions.</p>
   <div id="forecast-grid" class="fund-grid"></div>
@@ -949,7 +949,7 @@
     <div class="icon">📈</div>
     <h3>No forecasts yet</h3>
     <p>Create a forecast to project expected income from your funds, accounts, and rented properties</p>
-    <button class="btn btn-primary" onclick="openForecastModal()" style="margin-top: 15px;">+ New Forecast</button>
+    <button class="btn btn-primary" data-action="openForecastModal" style="margin-top: 15px;">+ New Forecast</button>
   </div>
 </div>
 <!-- Multi-Year Planner Section -->
@@ -963,11 +963,11 @@
     <div class="section-header-row" style="margin-bottom: 0;">
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <label style="margin:0; font-weight:600; color:#4a5568; font-size:14px;">📁 Plan:</label>
-        <select id="mypPlanSelect" onchange="mypSwitchPlan(this.value)" style="padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px; min-width:220px;"></select>
-        <button class="icon-btn" title="Rename this plan" onclick="mypRenamePlan()">✏️</button>
-        <button class="icon-btn" title="Delete this plan" onclick="mypDeletePlan()">🗑️</button>
+        <select id="mypPlanSelect" data-action="mypSwitchPlan" style="padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px; min-width:220px;"></select>
+        <button class="icon-btn" title="Rename this plan" data-action="mypRenamePlan">✏️</button>
+        <button class="icon-btn" title="Delete this plan" data-action="mypDeletePlan">🗑️</button>
       </div>
-      <button class="btn btn-primary" onclick="mypCreatePlan()">+ New Plan</button>
+      <button class="btn btn-primary" data-action="mypCreatePlan">+ New Plan</button>
     </div>
     <p style="color: #718096; font-size: 12px; margin: 10px 0 0;">Keep separate plans for different household members (e.g. "Me" and "Spouse") — each plan has its own accounts, rules, income, expenses, forecast, and baselines.</p>
   </div>
@@ -980,9 +980,9 @@
   </div>
 
   <div class="view-toggle" style="margin-bottom: 20px;">
-    <button id="planner-tab-setup-btn" class="view-toggle-btn active" onclick="switchPlannerTab('setup')">⚙️ Setup</button>
-    <button id="planner-tab-forecast-btn" class="view-toggle-btn" onclick="switchPlannerTab('forecast')">📊 Forecast</button>
-    <button id="planner-tab-baseline-btn" class="view-toggle-btn" onclick="switchPlannerTab('baseline')">🆚 Baseline vs. Actual</button>
+    <button id="planner-tab-setup-btn" class="view-toggle-btn active" data-action="switchPlannerTab" data-arg="setup">⚙️ Setup</button>
+    <button id="planner-tab-forecast-btn" class="view-toggle-btn" data-action="switchPlannerTab" data-arg="forecast">📊 Forecast</button>
+    <button id="planner-tab-baseline-btn" class="view-toggle-btn" data-action="switchPlannerTab" data-arg="baseline">🆚 Baseline vs. Actual</button>
   </div>
 
   <!-- Sub-tab 1: Setup -->
@@ -990,7 +990,7 @@
     <div class="chart-card">
       <div class="section-header-row" style="margin-bottom: 15px;">
         <h3 style="margin: 0;">🏦 Accounts</h3>
-        <button class="btn btn-primary" onclick="openMypFundModal()">+ Add Account</button>
+        <button class="btn btn-primary" data-action="openMypFundModal">+ Add Account</button>
       </div>
       <p style="color: #718096; font-size: 12px; margin: -10px 0 15px;">Just like Quick Forecasts: pick a scope (All Members / Joint / an individual) and a source (Unit Trust, Amanah Saham, KWSP, or Fixed Deposit), and the amount auto-fills as that group's current total — still fully editable. Real estate isn't included here.</p>
       <div id="mypFundsList"></div>
@@ -999,7 +999,7 @@
     <div class="chart-card">
       <div class="section-header-row" style="margin-bottom: 15px;">
         <h3 style="margin: 0;">🎚️ Staged Allocation Rules</h3>
-        <button class="btn btn-primary" onclick="openMypRuleModal()">+ Add Rule</button>
+        <button class="btn btn-primary" data-action="openMypRuleModal">+ Add Rule</button>
       </div>
       <p style="color: #718096; font-size: 12px; margin: -10px 0 15px;">Per year-range, set a priority (1 = paid down first during a deficit year) and an allocation % (share of any surplus that flows into that account).</p>
       <div id="mypRulesList"></div>
@@ -1008,7 +1008,7 @@
     <div class="chart-card">
       <div class="section-header-row" style="margin-bottom: 15px;">
         <h3 style="margin: 0;">🧾 Income Timeline</h3>
-        <button class="btn btn-primary" onclick="openMypIncomeModal()">+ Add Income Item</button>
+        <button class="btn btn-primary" data-action="openMypIncomeModal">+ Add Income Item</button>
       </div>
       <p style="color: #718096; font-size: 12px; margin: -10px 0 15px;">Key in each income source and one or more year ranges with your own amount — fully manual and editable, independent of your Income Forecast scenarios.</p>
       <div id="mypIncomeList"></div>
@@ -1017,7 +1017,7 @@
     <div class="chart-card">
       <div class="section-header-row" style="margin-bottom: 15px;">
         <h3 style="margin: 0;">🛒 Expense Budget</h3>
-        <button class="btn btn-primary" onclick="openMypExpenseModal()">+ Add Expense Item</button>
+        <button class="btn btn-primary" data-action="openMypExpenseModal">+ Add Expense Item</button>
       </div>
       <div id="mypExpenseList"></div>
     </div>
@@ -1032,7 +1032,7 @@
       <div class="nav-inputs" style="margin-bottom: 0;">
         <div class="nav-input-item"><label>Start Year</label><input type="number" id="mypStartYear" value="2027"></div>
         <div class="nav-input-item"><label>End Year</label><input type="number" id="mypEndYear" value="2056"></div>
-        <div class="nav-input-item" style="justify-content:flex-end;"><label>&nbsp;</label><button class="btn btn-primary" onclick="mypRunForecast()">Generate Forecast</button></div>
+        <div class="nav-input-item" style="justify-content:flex-end;"><label>&nbsp;</label><button class="btn btn-primary" data-action="mypRunForecast">Generate Forecast</button></div>
       </div>
     </div>
 
@@ -1043,7 +1043,7 @@
         <h3 style="margin: 0;">💼 Yearly Balance Snapshot</h3>
         <div style="display:flex; align-items:center; gap:8px;">
           <label style="margin:0; font-weight:500; font-size: 13px; color: #4a5568;">Year:</label>
-          <select id="mypSnapshotYear" onchange="mypUpdateYearSnapshot()" style="padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px;"></select>
+          <select id="mypSnapshotYear" data-action="mypUpdateYearSnapshot" style="padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px;"></select>
         </div>
       </div>
       <div class="stats-grid" id="mypSnapshotCards" style="margin-bottom: 0;"></div>
@@ -1073,7 +1073,7 @@
           <h3 style="margin: 0; color: #667eea;">🆚 Baseline vs. Actual</h3>
           <p style="color: #718096; font-size: 12px; margin-top: 4px;">Freeze the current live forecast's "Total All Accounts" per year as a baseline column, then key in each year's real end-of-year total to compare. Generate a forecast on the Forecast sub-tab first.</p>
         </div>
-        <button class="btn btn-primary" onclick="mypFreezeBaseline()">📷 Freeze Current as Baseline</button>
+        <button class="btn btn-primary" data-action="mypFreezeBaseline">📷 Freeze Current as Baseline</button>
       </div>
       <div class="table-scroll">
         <table>
@@ -1087,13 +1087,13 @@
 <!-- Income Forecast Add/Edit Modal -->
 <div class="modal-overlay" id="forecastModal">
   <div class="modal" style="max-width: 900px;">
-    <button class="modal-close-x" title="Close" onclick="closeForecastModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeForecastModal">✕</button>
     <h2 id="forecastModalTitle">New Forecast</h2>
     <input type="hidden" id="forecastId">
     <div class="form-row">
       <div class="form-group"><label>Forecast Name</label><input type="text" id="forecastName" placeholder="e.g. Retirement Income 2030"></div>
       <div class="form-group"><label>Scope</label>
-        <select id="forecastMemberScope" onchange="onForecastScopeChange()">
+        <select id="forecastMemberScope" data-action="onForecastScopeChange">
           <option value="All">👥 All Members</option>
           <option value="Joint">👫 Joint Only</option>
         </select>
@@ -1102,7 +1102,7 @@
 
     <div class="section-header-row" style="margin-top: 10px;">
       <h4 style="margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #4a5568;">Funds / Accounts</h4>
-      <button type="button" class="nav-btn secondary" onclick="addForecastFundRow()">+ Add Fund</button>
+      <button type="button" class="nav-btn secondary" data-action="addForecastFundRow">+ Add Fund</button>
     </div>
     <div class="table-scroll" style="max-height: 260px; margin-bottom: 10px;">
       <table>
@@ -1113,7 +1113,7 @@
 
     <div class="section-header-row" style="margin-top: 10px;">
       <h4 style="margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #4a5568;">Real Estate (Rented Only)</h4>
-      <button type="button" class="nav-btn secondary" onclick="addForecastPropertyRow()">+ Add Property</button>
+      <button type="button" class="nav-btn secondary" data-action="addForecastPropertyRow">+ Add Property</button>
     </div>
     <div class="table-scroll" style="max-height: 220px; margin-bottom: 15px;">
       <table>
@@ -1135,8 +1135,8 @@
     <p style="font-size: 12px; color: #a0aec0; margin: 0 0 15px;">Totals are converted to your base currency (⚙️ Currency in the nav bar) using your saved exchange rates.</p>
 
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeForecastModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveForecast()">Save Forecast</button>
+      <button class="btn btn-secondary" data-action="closeForecastModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveForecast">Save Forecast</button>
     </div>
   </div>
 </div>
@@ -1144,18 +1144,18 @@
 <!-- Multi-Year Planner: Account Modal -->
 <div class="modal-overlay" id="mypFundModal">
   <div class="modal">
-    <button class="modal-close-x" onclick="closeMypFundModal()">✕</button>
+    <button class="modal-close-x" data-action="closeMypFundModal">✕</button>
     <h2 id="mypFundModalTitle">Add Account</h2>
     <input type="hidden" id="mypFundId">
     <div class="form-row">
       <div class="form-group"><label>Scope</label>
-        <select id="mypFundScope" onchange="mypOnFundScopeSourceChange()">
+        <select id="mypFundScope" data-action="mypOnFundScopeSourceChange">
           <option value="All">👥 All Members</option>
           <option value="Joint">👫 Joint Only</option>
         </select>
       </div>
       <div class="form-group"><label>Source</label>
-        <select id="mypFundSource" onchange="mypOnFundScopeSourceChange()">
+        <select id="mypFundSource" data-action="mypOnFundScopeSourceChange">
           <option value="unittrust">Unit Trust</option>
           <option value="amanah">Amanah Saham</option>
           <option value="kwsp">KWSP</option>
@@ -1170,8 +1170,8 @@
     </div>
     <p style="font-size: 12px; color: #a0aec0; margin: -10px 0 15px;" id="mypFundCount"></p>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMypFundModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMypFund()">Save</button>
+      <button class="btn btn-secondary" data-action="closeMypFundModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveMypFund">Save</button>
     </div>
   </div>
 </div>
@@ -1179,7 +1179,7 @@
 <!-- Multi-Year Planner: Staged Rule Modal -->
 <div class="modal-overlay" id="mypRuleModal">
   <div class="modal">
-    <button class="modal-close-x" onclick="closeMypRuleModal()">✕</button>
+    <button class="modal-close-x" data-action="closeMypRuleModal">✕</button>
     <h2 id="mypRuleModalTitle">Add Staged Rule</h2>
     <input type="hidden" id="mypRuleId">
     <div class="form-group"><label>Account</label><select id="mypRuleFundId"></select></div>
@@ -1192,8 +1192,8 @@
       <div class="form-group"><label>Allocation % (share of surplus)</label><input type="number" id="mypRuleAlloc" min="0" max="100" step="0.01"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMypRuleModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMypRule()">Save</button>
+      <button class="btn btn-secondary" data-action="closeMypRuleModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveMypRule">Save</button>
     </div>
   </div>
 </div>
@@ -1201,18 +1201,18 @@
 <!-- Multi-Year Planner: Income Item Modal -->
 <div class="modal-overlay" id="mypIncomeModal">
   <div class="modal">
-    <button class="modal-close-x" onclick="closeMypIncomeModal()">✕</button>
+    <button class="modal-close-x" data-action="closeMypIncomeModal">✕</button>
     <h2 id="mypIncomeModalTitle">Add Income Item</h2>
     <input type="hidden" id="mypIncomeId">
     <div class="form-group"><label>Name</label><input type="text" id="mypIncomeName" placeholder="e.g. Salary / Rental / Dividends"></div>
     <div class="section-header-row" style="margin-bottom: 10px;">
       <label style="margin:0; font-weight: 500; color: #4a5568; font-size: 14px;">Year Ranges</label>
-      <button type="button" class="nav-btn secondary" onclick="mypAddIncomeRangeRow()">+ Year Range</button>
+      <button type="button" class="nav-btn secondary" data-action="mypAddIncomeRangeRow">+ Year Range</button>
     </div>
     <div id="mypIncomeRangesContainer" style="margin-bottom: 15px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMypIncomeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMypIncome()">Save</button>
+      <button class="btn btn-secondary" data-action="closeMypIncomeModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveMypIncome">Save</button>
     </div>
   </div>
 </div>
@@ -1220,31 +1220,31 @@
 <!-- Multi-Year Planner: Expense Item Modal -->
 <div class="modal-overlay" id="mypExpenseModal">
   <div class="modal">
-    <button class="modal-close-x" onclick="closeMypExpenseModal()">✕</button>
+    <button class="modal-close-x" data-action="closeMypExpenseModal">✕</button>
     <h2 id="mypExpenseModalTitle">Add Expense Item</h2>
     <input type="hidden" id="mypExpenseId">
     <div class="form-group"><label>Name</label><input type="text" id="mypExpenseName" placeholder="e.g. Household / Insurance"></div>
     <div class="section-header-row" style="margin-bottom: 10px;">
       <label style="margin:0; font-weight: 500; color: #4a5568; font-size: 14px;">Year Ranges</label>
-      <button type="button" class="nav-btn secondary" onclick="mypAddExpenseRangeRow()">+ Year Range</button>
+      <button type="button" class="nav-btn secondary" data-action="mypAddExpenseRangeRow">+ Year Range</button>
     </div>
     <div id="mypExpenseRangesContainer" style="margin-bottom: 15px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMypExpenseModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMypExpense()">Save</button>
+      <button class="btn btn-secondary" data-action="closeMypExpenseModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveMypExpense">Save</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay" id="fxTxModal" style="z-index:1001;">
   <div class="modal">
-    <button class="modal-close-x" onclick="closeFxTxModal()">✕</button>
+    <button class="modal-close-x" data-action="closeFxTxModal">✕</button>
     <h2 id="fxTxModalTitle">Add Cash Transaction</h2>
     <input type="hidden" id="fxTxId">
     <div class="form-row">
       <div class="form-group">
         <label>Transaction Type</label>
-        <select id="fxTxType" onchange="fxUpdateTypeLabels()">
+        <select id="fxTxType" data-action="fxUpdateTypeLabels">
           <option value="Buy">Buy Cash (Obtain)</option>
           <option value="Gift">Gift (Received)</option>
           <option value="Sell">Spend / Exchange Back</option>
@@ -1266,19 +1266,19 @@
     <div class="form-row">
       <div class="form-group">
         <label>Foreign Amount</label>
-        <input type="number" id="fxTxAmount" step="0.01" placeholder="e.g. 1000" oninput="fxCalcTxTotal()">
+        <input type="number" id="fxTxAmount" step="0.01" placeholder="e.g. 1000" data-action="fxCalcTxTotal">
       </div>
       <div class="form-group">
         <label id="fxTxRateLabel">Exchange Rate</label>
         <div style="display:flex;gap:6px;">
-          <input type="number" id="fxTxRate" step="0.00001" placeholder="e.g. 3.50" oninput="fxCalcTxTotal()" style="flex:1;">
-          <button type="button" class="btn btn-secondary" id="fxTxUseMarketRateBtn" onclick="fxUseMarketRate()" title="Fill in today's saved market rate for this currency" style="white-space:nowrap;">Use market rate</button>
+          <input type="number" id="fxTxRate" step="0.00001" placeholder="e.g. 3.50" data-action="fxCalcTxTotal" style="flex:1;">
+          <button type="button" class="btn btn-secondary" id="fxTxUseMarketRateBtn" data-action="fxUseMarketRate" title="Fill in today's saved market rate for this currency" style="white-space:nowrap;">Use market rate</button>
         </div>
       </div>
     </div>
     <div class="form-group">
       <label id="fxTxTotalLabel">Total Base Cost / Received</label>
-      <input type="number" id="fxTxTotalBase" step="0.01" placeholder="0.00" oninput="fxCalcTxRate()">
+      <input type="number" id="fxTxTotalBase" step="0.01" placeholder="0.00" data-action="fxCalcTxRate">
     </div>
     <div class="form-group">
       <label>Notes (optional)</label>
@@ -1286,15 +1286,15 @@
     </div>
     <div id="fxTxStatus" style="font-size:13px;color:#e53e3e;min-height:18px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeFxTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveFxTransaction()">Save Record</button>
+      <button class="btn btn-secondary" data-action="closeFxTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveFxTransaction">Save Record</button>
     </div>
   </div>
 </div>
 <!-- Foreign Currency Detail Modal -->
 <div class="modal-overlay" id="fxCurrencyDetailModal">
   <div class="modal" style="max-width: 900px;">
-    <button class="modal-close-x" title="Close" onclick="closeFxCurrencyDetailModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeFxCurrencyDetailModal">✕</button>
     <h2 id="fxDetailTitle">Currency Details</h2>
     <div class="detail-stats" style="margin-bottom: 20px;">
       <div class="detail-stat"><div class="label">Cash Amount</div><div class="value" id="fxd-amount">0</div></div>
@@ -1307,7 +1307,7 @@
     </div>
     <div class="section-header-row" style="margin-bottom: 12px;">
       <h3 style="margin: 0; color: #4a5568;">📜 Transaction History</h3>
-      <button class="btn btn-primary" onclick="openFxTxModal('Buy', currentFxCode)">+ Add Transaction</button>
+      <button class="btn btn-primary" data-action="addFxTxCurrent">+ Add Transaction</button>
     </div>
     <div class="table-scroll" style="margin-bottom: 20px;">
       <table>
@@ -1321,20 +1321,20 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="printFxSingleReport(currentFxCode)">🖨️ Print Report</button>
-      <button class="btn btn-secondary" onclick="closeFxCurrencyDetailModal()">Close</button>
+      <button class="btn btn-primary" data-action="printFxCurrent">🖨️ Print Report</button>
+      <button class="btn btn-secondary" data-action="closeFxCurrencyDetailModal">Close</button>
     </div>
   </div>
 </div>
 <!-- Real Estate Property Detail Modal -->
 <div class="modal-overlay" id="rePropertyDetailModal">
   <div class="modal" style="max-width: 900px;">
-    <button class="modal-close-x" title="Close" onclick="closeRePropertyDetailModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeRePropertyDetailModal">✕</button>
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 4px;">
       <h2 id="reDetailTitle" style="margin: 0;">Property Details</h2>
       <div style="display: flex; gap: 8px;">
-        <button class="btn btn-primary" onclick="openReTxModal(currentRePropertyId)">📒 + Rental Entry</button>
-        <button class="btn btn-primary" onclick="openReLoanTxModal(currentRePropertyId)">🏦 + Loan Entry</button>
+        <button class="btn btn-primary" data-action="addReTxCurrent">📒 + Rental Entry</button>
+        <button class="btn btn-primary" data-action="addReLoanTxCurrent">🏦 + Loan Entry</button>
       </div>
     </div>
     <div id="reDetailOwner" style="margin-bottom: 12px;"></div>
@@ -1359,7 +1359,7 @@
     </div>
     <div class="section-header-row" style="margin-bottom: 12px;">
       <h3 style="margin: 0; color: #4a5568;">📒 Rental Cashflow</h3>
-      <button class="btn btn-primary" onclick="openReTxModal(currentRePropertyId)">+ Add Entry</button>
+      <button class="btn btn-primary" data-action="addReTxCurrent">+ Add Entry</button>
     </div>
     <div class="table-scroll" style="margin-bottom: 25px;">
       <table>
@@ -1369,7 +1369,7 @@
     </div>
     <div class="section-header-row" style="margin-bottom: 12px;">
       <h3 style="margin: 0; color: #4a5568;">🏦 Bank Loan & Redraw Activity</h3>
-      <button class="btn btn-primary" onclick="openReLoanTxModal(currentRePropertyId)">+ Add Entry</button>
+      <button class="btn btn-primary" data-action="addReLoanTxCurrent">+ Add Entry</button>
     </div>
     <div class="table-scroll">
       <table>
@@ -1378,17 +1378,17 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="openRePrintOptionsModal()">🖨️ Print Report</button>
-      <button class="btn btn-success" onclick="editPropertyFromDetail()">✏️ Edit</button>
-      <button class="btn btn-danger" onclick="deletePropertyFromDetail()">🗑️ Delete</button>
-      <button class="btn btn-secondary" onclick="closeRePropertyDetailModal()">Close</button>
+      <button class="btn btn-primary" data-action="openRePrintOptionsModal">🖨️ Print Report</button>
+      <button class="btn btn-success" data-action="editPropertyFromDetail">✏️ Edit</button>
+      <button class="btn btn-danger" data-action="deletePropertyFromDetail">🗑️ Delete</button>
+      <button class="btn btn-secondary" data-action="closeRePropertyDetailModal">Close</button>
     </div>
   </div>
 </div>
 <!-- Real Estate Print Options Modal -->
 <div class="modal-overlay" id="rePrintOptionsModal">
   <div class="modal" style="max-width: 420px;">
-    <button class="modal-close-x" title="Close" onclick="closeRePrintOptionsModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeRePrintOptionsModal">✕</button>
     <h2>Print Report</h2>
     <p style="font-size: 13px; color: #718096; margin: -8px 0 15px;">Choose which sections to include. Purchase Cost, Mortgage, Equity and other summary stats are always included.</p>
     <div class="form-group">
@@ -1403,15 +1403,15 @@
       </label>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeRePrintOptionsModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmRePrintReport()">🖨️ Print</button>
+      <button class="btn btn-secondary" data-action="closeRePrintOptionsModal">Cancel</button>
+      <button class="btn btn-primary" data-action="confirmRePrintReport">🖨️ Print</button>
     </div>
   </div>
 </div>
 <!-- Real Estate Property Add/Edit Modal -->
 <div class="modal-overlay" id="rePropertyModal">
   <div class="modal" style="max-width: 700px;">
-    <button class="modal-close-x" title="Close" onclick="closeRePropertyModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeRePropertyModal">✕</button>
     <h2 id="rePropertyModalTitle">Add Property</h2>
     <input type="hidden" id="rePropId">
     <div class="form-row">
@@ -1444,7 +1444,7 @@
           <h4 style="margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #4a5568;">Initial Purchase Breakdown</h4>
           <p style="font-size: 11px; color: #718096; margin: 4px 0 0;">Items marked "Bank Loan" sync automatically to the loan ledger as drawdown tranches — safe to edit or remove later, it won't create duplicates.</p>
         </div>
-        <button type="button" class="nav-btn secondary" onclick="addRePurchaseRow()">+ Add Item</button>
+        <button type="button" class="nav-btn secondary" data-action="addRePurchaseRow">+ Add Item</button>
       </div>
       <div class="table-scroll" style="max-height: 240px;">
         <table>
@@ -1470,20 +1470,20 @@
     </div>
     <div class="form-group"><label>Target Monthly Rent</label><input type="number" id="rePropMonthlyRent" step="0.01" value="0"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeRePropertyModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveReProperty()">Save Property</button>
+      <button class="btn btn-secondary" data-action="closeRePropertyModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveReProperty">Save Property</button>
     </div>
   </div>
 </div>
 <!-- Real Estate Cashflow Transaction Modal -->
 <div class="modal-overlay" id="reTxModal">
   <div class="modal">
-    <button class="modal-close-x" title="Close" onclick="closeReTxModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeReTxModal">✕</button>
     <h2>Log Cashflow Entry</h2>
     <input type="hidden" id="reTxId">
     <div class="form-group"><label>Property</label><select id="reTxPropertyId"></select></div>
     <div class="form-row">
-      <div class="form-group"><label>Type</label><select id="reTxType" onchange="updateReTxCategories()"><option value="INCOME">Income (+)</option><option value="EXPENSE">Expense (-)</option></select></div>
+      <div class="form-group"><label>Type</label><select id="reTxType" data-action="updateReTxCategories"><option value="INCOME">Income (+)</option><option value="EXPENSE">Expense (-)</option></select></div>
       <div class="form-group"><label>Category</label><select id="reTxCategory"></select></div>
     </div>
     <div class="form-row">
@@ -1491,21 +1491,21 @@
       <div class="form-group"><label>Date</label><input type="date" id="reTxDate"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeReTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveReTx()">Save Entry</button>
+      <button class="btn btn-secondary" data-action="closeReTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveReTx">Save Entry</button>
     </div>
   </div>
 </div>
 <!-- Real Estate Loan/Redraw Transaction Modal -->
 <div class="modal-overlay" id="reLoanTxModal">
   <div class="modal">
-    <button class="modal-close-x" title="Close" onclick="closeReLoanTxModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeReLoanTxModal">✕</button>
     <h2>Log Loan / Redraw Activity</h2>
     <p style="font-size: 13px; color: #718096; margin: -8px 0 15px;">Record loan repayments, interest, service fees, drawdowns, or redraws.</p>
     <input type="hidden" id="reLoanTxId">
     <div class="form-group"><label>Property</label><select id="reLoanTxPropertyId"></select></div>
     <div class="form-group"><label>Action Type</label>
-      <select id="reLoanTxAction" onchange="toggleReLoanFields()">
+      <select id="reLoanTxAction" data-action="toggleReLoanFields">
         <option value="REPAYMENT">Loan Repayment (Reduces Principal)</option>
         <option value="BANK_CHARGES">Bank Charges (Mortgage Interest + Service Fee)</option>
         <option value="REDRAW_WITHDRAW">Redraw Drawdown (Withdraw Extra Funds)</option>
@@ -1527,8 +1527,8 @@
     <div class="form-group"><label>Date</label><input type="date" id="reLoanTxDate"></div>
     <div class="form-group"><label>Notes <span style="font-weight:400;color:#a0aec0;">(optional)</span></label><textarea id="reLoanTxNotes" rows="2" placeholder="e.g. reason, reference number, follow-up..."></textarea></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeReLoanTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveReLoanTx()">Save Entry</button>
+      <button class="btn btn-secondary" data-action="closeReLoanTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveReLoanTx">Save Entry</button>
     </div>
   </div>
 </div>
@@ -1536,19 +1536,19 @@
 <!-- Attachment Viewer Modal (in-app PDF/image viewer — avoids the browser's "download vs open" chooser on data: URLs and doesn't rely on the browser's own PDF plugin) -->
 <div class="modal-overlay" id="attachmentViewerModal">
   <div class="modal" style="max-width: 900px;">
-    <button class="modal-close-x" title="Close" onclick="closeAttachmentViewer()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeAttachmentViewer">✕</button>
     <h2 id="avTitle">Attachment</h2>
     <div id="avContent" style="max-height: 65vh; overflow-y: auto; background: #f7fafc; border-radius: 10px; padding: 15px; text-align: center;"></div>
     <div class="modal-actions">
       <a id="avSaveCopyBtn" class="btn btn-primary" href="#" download>💾 Save a Copy</a>
-      <button class="btn btn-secondary" onclick="closeAttachmentViewer()">Close</button>
+      <button class="btn btn-secondary" data-action="closeAttachmentViewer">Close</button>
     </div>
   </div>
 </div>
 <!-- Fixed Deposit Detail Modal -->
 <div class="modal-overlay" id="fdDetailModal">
   <div class="modal" style="max-width: 900px;">
-    <button class="modal-close-x" title="Close" onclick="closeFdDetailModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeFdDetailModal">✕</button>
     <h2 id="fdDetailTitle">Fixed Deposit Details</h2>
     <div id="fdDetailOwner" style="margin-bottom: 12px;"></div>
     <div class="detail-stats" style="margin-bottom: 20px;">
@@ -1565,7 +1565,7 @@
     <div id="fdd-interim-payouts-section" style="margin-bottom: 25px;">
       <div class="section-header-row" style="margin-bottom: 12px;">
         <h3 style="margin: 0; color: #4a5568;">💰 Interest Payments Received</h3>
-        <button class="btn btn-primary" onclick="openFdInterestPayoutModal(currentFdId)">+ Record Interest Received</button>
+        <button class="btn btn-primary" data-action="openFdPayoutCurrent">+ Record Interest Received</button>
       </div>
       <div class="table-scroll">
         <table>
@@ -1582,11 +1582,11 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="openProcessMaturityModal(currentFdId)">📜 Process Maturity</button>
-      <button class="btn btn-primary" onclick="printFdSingleReport(currentFdId)">🖨️ Print Report</button>
-      <button class="btn btn-success" onclick="editFdFromDetail()">✏️ Edit</button>
-      <button class="btn btn-danger" onclick="deleteFdFromDetail()">🗑️ Delete</button>
-      <button class="btn btn-secondary" onclick="closeFdDetailModal()">Close</button>
+      <button class="btn btn-primary" data-action="processMaturityCurrent">📜 Process Maturity</button>
+      <button class="btn btn-primary" data-action="printFdCurrent">🖨️ Print Report</button>
+      <button class="btn btn-success" data-action="editFdFromDetail">✏️ Edit</button>
+      <button class="btn btn-danger" data-action="deleteFdFromDetail">🗑️ Delete</button>
+      <button class="btn btn-secondary" data-action="closeFdDetailModal">Close</button>
     </div>
   </div>
 </div>
@@ -1594,15 +1594,15 @@
 <!-- Fixed Deposit Interest Payout Modal (for FDs paying interest monthly / half-yearly before maturity) -->
 <div class="modal-overlay" id="fdInterestPayoutModal">
   <div class="modal">
-    <button class="modal-close-x" title="Close" onclick="closeFdInterestPayoutModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeFdInterestPayoutModal">✕</button>
     <h2>💰 Record Interest Received</h2>
     <input type="hidden" id="fipFdId">
     <div class="form-group"><label>Date Received</label><input type="date" id="fipDate"></div>
     <div class="form-group"><label>Interest Amount <span style="font-weight:400;color:#a0aec0;">(pre-filled with the estimate — adjust to match your actual bank statement)</span></label><input type="number" id="fipAmount" step="0.01"></div>
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="fipNotes"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeFdInterestPayoutModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveFdInterestPayout()">Save</button>
+      <button class="btn btn-secondary" data-action="closeFdInterestPayoutModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveFdInterestPayout">Save</button>
     </div>
   </div>
 </div>
@@ -1610,7 +1610,7 @@
 <!-- Fixed Deposit Add/Edit Modal -->
 <div class="modal-overlay" id="fdModal">
   <div class="modal">
-    <button class="modal-close-x" title="Close" onclick="closeFdModal()">✕</button>
+    <button class="modal-close-x" title="Close" data-action="closeFdModal">✕</button>
     <h2 id="fdModalTitle">Add Fixed Deposit</h2>
     <input type="hidden" id="fdId">
     <div class="form-group"><label>Bank / Institution</label><input type="text" id="fdBankName" placeholder="e.g., Maybank, CIMB, RHB"></div>
@@ -1628,8 +1628,8 @@
       </div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Placement Date</label><input type="date" id="fdPlacementDate" onchange="calcFdMaturityFromTenure()"></div>
-      <div class="form-group"><label>Tenure (months)</label><input type="number" id="fdTenureMonths" step="1" min="0" placeholder="e.g., 12" oninput="calcFdMaturityFromTenure()"></div>
+      <div class="form-group"><label>Placement Date</label><input type="date" id="fdPlacementDate" data-action="calcFdMaturityFromTenure"></div>
+      <div class="form-group"><label>Tenure (months)</label><input type="number" id="fdTenureMonths" step="1" min="0" placeholder="e.g., 12" data-action="calcFdMaturityFromTenure"></div>
     </div>
     <div class="form-group"><label>Maturity Date <span style="font-weight:400;color:#a0aec0;">(auto-filled from tenure — edit freely if needed)</span></label><input type="date" id="fdMaturityDate"></div>
     <div class="form-group"><label>Interest Received <span style="font-weight:400;color:#a0aec0;">(how the bank pays out interest)</span></label>
@@ -1643,12 +1643,12 @@
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="fdNotes"></div>
     <div class="form-group">
       <label>FD Receipts / Attachments (optional, add as many as you like)</label>
-      <input type="file" id="fdAttachmentInput" accept="image/*,.pdf" multiple onchange="handleFdAttachmentSelect(event)">
+      <input type="file" id="fdAttachmentInput" accept="image/*,.pdf" multiple data-action="handleFdAttachmentSelect">
       <div id="fdAttachmentPreview" style="margin-top:8px;font-size:13px;color:#718096;"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeFdModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveFd()">Save</button>
+      <button class="btn btn-secondary" data-action="closeFdModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveFd">Save</button>
     </div>
   </div>
 </div>
@@ -1659,11 +1659,11 @@
     <h2>📜 Process Maturity</h2>
     <input type="hidden" id="pmFdId">
     <div id="pmSummary" style="background:#f7fafc;padding:15px;border-radius:10px;margin-bottom:15px;font-size:14px;line-height:1.8;"></div>
-    <div class="form-group"><label>Interest Received <span style="font-weight:400;color:#a0aec0;">(pre-filled with the estimate — adjust to match your actual bank statement)</span></label><input type="number" id="pmInterestReceived" step="0.01" oninput="onPmInterestChange()"></div>
+    <div class="form-group"><label>Interest Received <span style="font-weight:400;color:#a0aec0;">(pre-filled with the estimate — adjust to match your actual bank statement)</span></label><input type="number" id="pmInterestReceived" step="0.01" data-action="onPmInterestChange"></div>
     <div class="form-group">
       <label style="display:block;margin-bottom:8px;">What happens at maturity?</label>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-weight:400;"><input type="radio" name="pmAction" id="pmActionRenew" value="renew" style="width:auto;margin:0;" onchange="onPmActionChange()"> 🔄 Renew this deposit for another term</label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;"><input type="radio" name="pmAction" id="pmActionClose" value="close" style="width:auto;margin:0;" onchange="onPmActionChange()"> ✅ Withdraw &amp; Close</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-weight:400;"><input type="radio" name="pmAction" id="pmActionRenew" value="renew" style="width:auto;margin:0;" data-action="onPmActionChange"> 🔄 Renew this deposit for another term</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;"><input type="radio" name="pmAction" id="pmActionClose" value="close" style="width:auto;margin:0;" data-action="onPmActionChange"> ✅ Withdraw &amp; Close</label>
     </div>
     <div id="pmRenewFields">
       <div class="form-row">
@@ -1675,8 +1675,8 @@
     <div id="pmPayoutSummary" style="font-size:14px;margin-bottom:10px;"></div>
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="pmNotes"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeProcessMaturityModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmProcessMaturity()">Confirm</button>
+      <button class="btn btn-secondary" data-action="closeProcessMaturityModal">Cancel</button>
+      <button class="btn btn-primary" data-action="confirmProcessMaturity">Confirm</button>
     </div>
   </div>
 </div>
@@ -1702,11 +1702,11 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeKwspAccountDetailModal()">Close</button>
-      <button class="btn btn-primary" onclick="openKwspTxModal(currentKwspAccountId); closeKwspAccountDetailModal();">Add Transaction</button>
-      <button class="btn btn-primary" onclick="printKwspAccountReport(currentKwspAccountId)">🖨️ Print Report</button>
-      <button class="btn btn-success" onclick="editKwspAccountFromDetail()">✏️ Edit Account</button>
-      <button class="btn btn-danger" onclick="deleteKwspAccountFromDetail()">🗑️ Delete Account</button>
+      <button class="btn btn-secondary" data-action="closeKwspAccountDetailModal">Close</button>
+      <button class="btn btn-primary" data-action="addKwspTxCurrentAndClose">Add Transaction</button>
+      <button class="btn btn-primary" data-action="printKwspCurrent">🖨️ Print Report</button>
+      <button class="btn btn-success" data-action="editKwspAccountFromDetail">✏️ Edit Account</button>
+      <button class="btn btn-danger" data-action="deleteKwspAccountFromDetail">🗑️ Delete Account</button>
     </div>
   </div>
 </div>
@@ -1720,8 +1720,8 @@
     <div class="form-group"><label>Currency</label><select id="kwspAccountCurrency"><option value="MYR">MYR</option><option value="USD">USD</option><option value="SGD">SGD</option></select></div>
     <div class="form-group"><label>Owner(s)</label><div id="kwspAccountOwnersList" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeKwspAccountModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveKwspAccount()">Save</button>
+      <button class="btn btn-secondary" data-action="closeKwspAccountModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveKwspAccount">Save</button>
     </div>
   </div>
 </div>
@@ -1749,8 +1749,8 @@
     <div class="form-group"><label>Amount</label><input type="number" id="kwspTxAmount" step="0.01" placeholder="0.00"></div>
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="kwspTxNotes"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeKwspTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveKwspTx()">Save</button>
+      <button class="btn btn-secondary" data-action="closeKwspTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveKwspTx">Save</button>
     </div>
   </div>
 </div>
@@ -1774,11 +1774,11 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeAmanahFundDetailModal()">Close</button>
-      <button class="btn btn-primary" onclick="openAmanahTxModal(currentAmanahFundId); closeAmanahFundDetailModal();">Add Transaction</button>
-      <button class="btn btn-primary" onclick="printAmanahFundReport(currentAmanahFundId)">🖨️ Print Report</button>
-      <button class="btn btn-success" onclick="editAmanahFundFromDetail()">✏️ Edit Fund</button>
-      <button class="btn btn-danger" onclick="deleteAmanahFundFromDetail()">🗑️ Delete Fund</button>
+      <button class="btn btn-secondary" data-action="closeAmanahFundDetailModal">Close</button>
+      <button class="btn btn-primary" data-action="addAmanahTxCurrentAndClose">Add Transaction</button>
+      <button class="btn btn-primary" data-action="printAmanahCurrent">🖨️ Print Report</button>
+      <button class="btn btn-success" data-action="editAmanahFundFromDetail">✏️ Edit Fund</button>
+      <button class="btn btn-danger" data-action="deleteAmanahFundFromDetail">🗑️ Delete Fund</button>
     </div>
   </div>
 </div>
@@ -1796,8 +1796,8 @@
     <div class="form-group"><label>Fixed Price (per unit)</label><input type="number" id="amanahFundPrice" step="0.0001" placeholder="1.0000"></div>
     <div class="form-group"><label>Owner(s)</label><div id="amanahFundOwnersList" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeAmanahFundModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAmanahFund()">Save</button>
+      <button class="btn btn-secondary" data-action="closeAmanahFundModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveAmanahFund">Save</button>
     </div>
   </div>
 </div>
@@ -1808,11 +1808,11 @@
     <input type="hidden" id="amanahTxId">
     <div class="form-group">
       <label>Scheme</label>
-      <select id="amanahTxFundId" onchange="onAmanahTxFundChange()"></select>
+      <select id="amanahTxFundId" data-action="onAmanahTxFundChange"></select>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Type</label>
-        <select id="amanahTxType" onchange="onAmanahTxTypeChange()">
+        <select id="amanahTxType" data-action="onAmanahTxTypeChange">
           <option value="Buy">Buy</option>
           <option value="Sell">Sell</option>
           <option value="Dividend">Dividend (Cash)</option>
@@ -1824,14 +1824,14 @@
       <div class="form-group"><label>Date</label><input type="date" id="amanahTxDate"></div>
     </div>
     <div class="form-row" id="amanahTxUnitsPriceRow">
-      <div class="form-group"><label>Units</label><input type="number" id="amanahTxUnits" step="0.0001" oninput="calcAmanahTxAmount('units')"></div>
-      <div class="form-group"><label>Price</label><input type="number" id="amanahTxPrice" step="0.0001" oninput="calcAmanahTxAmount('price')"></div>
+      <div class="form-group"><label>Units</label><input type="number" id="amanahTxUnits" step="0.0001" data-action="calcAmanahTxAmount" data-arg="units"></div>
+      <div class="form-group"><label>Price</label><input type="number" id="amanahTxPrice" step="0.0001" data-action="calcAmanahTxAmount" data-arg="price"></div>
     </div>
-    <div class="form-group"><label>Amount</label><input type="number" id="amanahTxAmount" step="0.01" oninput="calcAmanahTxAmount('amount')"></div>
+    <div class="form-group"><label>Amount</label><input type="number" id="amanahTxAmount" step="0.01" data-action="calcAmanahTxAmount" data-arg="amount"></div>
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="amanahTxNotes"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeAmanahTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAmanahTx()">Save</button>
+      <button class="btn btn-secondary" data-action="closeAmanahTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveAmanahTx">Save</button>
     </div>
   </div>
 </div>
@@ -1849,8 +1849,8 @@
     <div class="form-group"><label>Owner(s)</label><div id="fundOwnersList" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>
     <div class="form-group"><label>Current NAV</label><input type="number" id="fundNav" step="0.0001" placeholder="1.0000"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeFundModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveFund()">Save Fund</button>
+      <button class="btn btn-secondary" data-action="closeFundModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveFund">Save Fund</button>
     </div>
   </div>
 </div>
@@ -1867,8 +1867,8 @@
       <div class="form-group"><label>Confirm Passcode</label><input type="password" id="encPasscode2" placeholder="Re-enter passcode"></div>
       <div id="encModalStatus" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
       <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeEncryptionModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitEnableEncryption()">Enable Encryption</button>
+        <button class="btn btn-secondary" data-action="closeEncryptionModal">Cancel</button>
+        <button class="btn btn-primary" data-action="submitEnableEncryption">Enable Encryption</button>
       </div>
     </div>
     <div id="encryptionModalOn" class="hidden">
@@ -1877,8 +1877,8 @@
       <div class="form-group"><label>Current Passcode</label><input type="password" id="encDisablePasscode" placeholder="Enter your passcode"></div>
       <div id="encModalStatus2" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
       <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeEncryptionModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="submitDisableEncryption()">Disable Encryption</button>
+        <button class="btn btn-secondary" data-action="closeEncryptionModal">Cancel</button>
+        <button class="btn btn-danger" data-action="submitDisableEncryption">Disable Encryption</button>
       </div>
     </div>
   </div>
@@ -1890,9 +1890,9 @@
     <div style="font-size:40px;margin-bottom:10px;">🔒</div>
     <h2>Enter Passcode to Unlock</h2>
     <p style="color:#718096;font-size:13px;margin-bottom:20px;">Your data is encrypted. Enter your passcode to continue.</p>
-    <input type="password" id="unlockPasscode" placeholder="Passcode" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;" onkeydown="if(event.key==='Enter') attemptUnlock();">
+    <input type="password" id="unlockPasscode" placeholder="Passcode" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;" data-enter-action="attemptUnlock">
     <div id="unlockStatus" style="font-size:13px;margin-bottom:15px;min-height:18px;color:#e53e3e;"></div>
-    <button class="btn btn-primary" onclick="attemptUnlock()" style="width:100%;justify-content:center;">Unlock</button>
+    <button class="btn btn-primary" data-action="attemptUnlock" style="width:100%;justify-content:center;">Unlock</button>
   </div>
 </div>
 
@@ -1903,7 +1903,7 @@
     <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:15px;">
       <label style="margin:0;">🔒 Encrypt this backup</label>
       <label class="toggle-switch">
-        <input type="checkbox" id="exportEncryptToggle" checked onchange="onExportEncryptToggleChange()">
+        <input type="checkbox" id="exportEncryptToggle" checked data-action="onExportEncryptToggleChange">
         <span class="toggle-slider"></span>
       </label>
     </div>
@@ -1915,8 +1915,8 @@
     <div id="exportWarningNote" class="hidden" style="color:#dd6b20;font-size:13px;margin:0 0 15px;padding:10px;background:#fffaf0;border-radius:8px;">⚠️ 明文备份不含密码保护，请妥善保管<br><span style="color:#a0725c;font-size:12px;">(This plaintext backup has no password protection — keep the file somewhere secure.)</span></div>
     <div id="exportModalStatus" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeExportModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmExport()">Export</button>
+      <button class="btn btn-secondary" data-action="closeExportModal">Cancel</button>
+      <button class="btn btn-primary" data-action="confirmExport">Export</button>
     </div>
   </div>
 </div>
@@ -1926,11 +1926,11 @@
   <div class="modal">
     <h2>🔒 Encrypted Backup</h2>
     <p style="color:#718096;font-size:13px;margin-bottom:15px;">This backup file is encrypted. Enter the passcode that was used when it was exported.</p>
-    <div class="form-group"><label>Backup Passcode</label><input type="password" id="importBackupPasscode" placeholder="Enter passcode" onkeydown="if(event.key==='Enter') confirmImportPasscode();"></div>
+    <div class="form-group"><label>Backup Passcode</label><input type="password" id="importBackupPasscode" placeholder="Enter passcode" data-enter-action="confirmImportPasscode"></div>
     <div id="importPasscodeStatus" style="font-size:13px;margin-bottom:10px;min-height:18px;color:#e53e3e;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeImportPasscodeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmImportPasscode()">Unlock &amp; Import</button>
+      <button class="btn btn-secondary" data-action="closeImportPasscodeModal">Cancel</button>
+      <button class="btn btn-primary" data-action="confirmImportPasscode">Unlock &amp; Import</button>
     </div>
   </div>
 </div>
@@ -1946,12 +1946,12 @@
     </div>
     <div id="exchangeRatesList"></div>
     <div style="margin: 12px 0;">
-      <button class="btn btn-secondary" onclick="fetchLiveRates()" id="fetchRatesBtn">🔄 Fetch Live Rates</button>
+      <button class="btn btn-secondary" data-action="fetchLiveRates" id="fetchRatesBtn">🔄 Fetch Live Rates</button>
       <div id="fetchRatesStatus" style="font-size:12px;color:#718096;margin-top:8px;"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeCurrencyModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveCurrencySettings()">Save</button>
+      <button class="btn btn-secondary" data-action="closeCurrencyModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveCurrencySettings">Save</button>
     </div>
   </div>
 </div>
@@ -1964,10 +1964,10 @@
     <div id="membersList" style="margin-bottom: 15px;"></div>
     <div style="display:flex;gap:10px;">
       <input type="text" id="newMemberName" placeholder="e.g., Husband, Wife, Alex..." style="flex:1;padding:10px;border:1px solid #e2e8f0;border-radius:8px;">
-      <button class="btn btn-primary" onclick="addMember()">+ Add</button>
+      <button class="btn btn-primary" data-action="addMember">+ Add</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeMembersModal()">Done</button>
+      <button class="btn btn-secondary" data-action="closeMembersModal">Done</button>
     </div>
   </div>
 </div>
@@ -1979,7 +1979,7 @@
     <p style="color:#718096;font-size:13px;margin-bottom:15px;">Choose which funds to include in the report.</p>
     <div id="printOwnerButtons" style="display:flex;flex-direction:column;gap:10px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closePrintOwnerModal()">Cancel</button>
+      <button class="btn btn-secondary" data-action="closePrintOwnerModal">Cancel</button>
     </div>
   </div>
 </div>
@@ -1992,18 +1992,18 @@
     <input type="hidden" id="txFundId">
     <div class="form-group"><label>Fund</label><select id="txFundSelect"></select></div>
     <div class="form-row">
-      <div class="form-group"><label>Transaction Type</label><select id="txType" onchange="onTxTypeChange()"><option value="Buy">Buy</option><option value="Sell">Sell</option><option value="Dividend">Dividend (Reinvest)</option><option value="Dividend Cheque">Dividend (Cheque Payout)</option><option value="Contribution">Contribution</option></select></div>
+      <div class="form-group"><label>Transaction Type</label><select id="txType" data-action="onTxTypeChange"><option value="Buy">Buy</option><option value="Sell">Sell</option><option value="Dividend">Dividend (Reinvest)</option><option value="Dividend Cheque">Dividend (Cheque Payout)</option><option value="Contribution">Contribution</option></select></div>
       <div class="form-group"><label>Date</label><input type="date" id="txDate"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Units</label><input type="number" id="txUnits" step="0.0001" placeholder="0.00" oninput="autoCalcTx('units')"></div>
-      <div class="form-group"><label>Price per Unit</label><input type="number" id="txPrice" step="0.0001" placeholder="0.00" oninput="autoCalcTx('price')"></div>
+      <div class="form-group"><label>Units</label><input type="number" id="txUnits" step="0.0001" placeholder="0.00" data-action="autoCalcTx" data-arg="units"></div>
+      <div class="form-group"><label>Price per Unit</label><input type="number" id="txPrice" step="0.0001" placeholder="0.00" data-action="autoCalcTx" data-arg="price"></div>
     </div>
-    <div class="form-group"><label>Total Amount</label><input type="number" id="txAmount" step="0.01" placeholder="0.00" oninput="autoCalcTx('amount')"></div>
+    <div class="form-group"><label>Total Amount</label><input type="number" id="txAmount" step="0.01" placeholder="0.00" data-action="autoCalcTx" data-arg="amount"></div>
     <div class="form-group"><label>Notes</label><input type="text" id="txNotes" placeholder="Optional notes"></div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeTxModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTransaction()">Save Transaction</button>
+      <button class="btn btn-secondary" data-action="closeTxModal">Cancel</button>
+      <button class="btn btn-primary" data-action="saveTransaction">Save Transaction</button>
     </div>
   </div>
 </div>
@@ -2030,10 +2030,10 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeClosedFundModal()">Close</button>
-      <button class="btn btn-primary" onclick="printClosedFundReport()">🖨️ Print Report</button>
-      <button class="btn btn-success" onclick="editClosedFundFromModal()">✏️ Edit Fund</button>
-      <button class="btn btn-danger" onclick="deleteClosedFundFromModal()">🗑️ Delete Fund</button>
+      <button class="btn btn-secondary" data-action="closeClosedFundModal">Close</button>
+      <button class="btn btn-primary" data-action="printClosedFundReport">🖨️ Print Report</button>
+      <button class="btn btn-success" data-action="editClosedFundFromModal">✏️ Edit Fund</button>
+      <button class="btn btn-danger" data-action="deleteClosedFundFromModal">🗑️ Delete Fund</button>
     </div>
   </div>
 </div>

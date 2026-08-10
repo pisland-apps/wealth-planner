@@ -6,8 +6,8 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v8';
-const APP_VERSION_DATE = '2026-08-09';
+const APP_VERSION = 'v9';
+const APP_VERSION_DATE = '2026-08-10';
 
 (function renderVersionBadge() {
   const badge = document.getElementById('versionBadge');
@@ -23,11 +23,7 @@ const APP_VERSION_DATE = '2026-08-09';
 // at all — a stored-XSS hole, e.g. a member name of `<img src=x onerror=...>`
 // would execute wherever that member's name is rendered. Every call site
 // that builds HTML from user data has been updated to use this helper
-// (149 call sites as of this patch). Attribute contexts that embed a value
-// inside inline JS (e.g. onclick="fn(...)") additionally wrap the value in
-// JSON.stringify(...) before escapeHtml(...), so it's safely quoted as a JS
-// string literal AND safely escaped as an HTML attribute — see deleteMember's
-// onclick for the reference pattern.
+// (149 call sites as of this patch).
 function escapeHtml(value) {
   if (value === null || value === undefined) return '';
   return String(value).replace(/[&<>"']/g, (ch) => ({
@@ -774,7 +770,7 @@ async function renderOwnerCheckboxes(containerId, selectedIds) {
   }
   container.innerHTML = members.map(m => {
     const checked = selectedIds.includes(m.id);
-    return `<label class="owner-check-pill ${checked ? 'checked' : ''}" onclick="setTimeout(() => this.classList.toggle('checked', this.querySelector('input').checked), 0)">
+    return `<label class="owner-check-pill ${checked ? 'checked' : ''}" data-action="toggleCheckedDelayed">
       <input type="checkbox" value="${m.id}" ${checked ? 'checked' : ''}>${escapeHtml(m.name)}
     </label>`;
   }).join('');
@@ -1144,7 +1140,7 @@ async function renderFunds() {
         const m = calcFundMetrics(fund, transactions);
         const plClass = m.pl >= 0 ? 'positive' : 'negative';
         return `<tr>
-          <td><a href="#" onclick="event.preventDefault(); showFundDetail(${fund.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fund.name)}</a>${fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(fund.code)}</div>` : ''}</td>
+          <td><a href="#" data-action="showFundDetail" data-prevent="1" data-arg="${fund.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fund.name)}</a>${fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(fund.code)}</div>` : ''}</td>
           <td>${ownerBadgeHtml(fund.ownerIds, membersById)}</td>
           <td>${escapeHtml(fund.category)}</td>
           <td>${fund.currency}</td>
@@ -1157,8 +1153,8 @@ async function renderFunds() {
           <td class="${plClass}">${m.annualised.toFixed(2)}%</td>
           <td>${m.yearsHeld}</td>
           <td><div class="tx-actions">
-            <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openFundModal(${fund.id})">✏️</button>
-            <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteFund(${fund.id})">🗑️</button>
+            <button class="icon-btn" title="Edit" data-action="openFundModal" data-stop="1" data-arg="${fund.id}">✏️</button>
+            <button class="icon-btn" title="Delete" data-action="deleteFund" data-stop="1" data-arg="${fund.id}">🗑️</button>
           </div></td>
         </tr>`;
       }).join('');
@@ -1175,10 +1171,10 @@ async function renderFunds() {
     const cards = groups[cur].map(fund => {
       const m = calcFundMetrics(fund, transactions);
       const plClass = m.pl >= 0 ? 'positive' : 'negative';
-      return `<div class="fund-card" onclick="showFundDetail(${fund.id})">
+      return `<div class="fund-card" data-action="showFundDetail" data-arg="${fund.id}">
         <div class="actions">
-          <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openFundModal(${fund.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteFund(${fund.id})">🗑️</button>
+          <button class="icon-btn" title="Edit" data-action="openFundModal" data-stop="1" data-arg="${fund.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteFund" data-stop="1" data-arg="${fund.id}">🗑️</button>
         </div>
         <div class="fund-header">
           <div>
@@ -1250,8 +1246,8 @@ async function showFundDetail(fundId) {
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="editTransaction(${tx.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteTransaction(${tx.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="editTransaction" data-arg="${tx.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteTransaction" data-arg="${tx.id}">🗑️</button>
       </div></td>
     </tr>`).join('');
   }
@@ -1364,8 +1360,8 @@ async function renderTransactions() {
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="editTransaction(${tx.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteTransaction(${tx.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="editTransaction" data-arg="${tx.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteTransaction" data-arg="${tx.id}">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -1447,10 +1443,10 @@ async function renderClosedFunds() {
     container.innerHTML = `<div class="fund-grid">` + currencies.map((cur, idx) => {
       const cards = groups[cur].map(d => {
         const plClass = d.realisedPL >= 0 ? 'positive' : 'negative';
-        return `<div class="fund-card" onclick="showClosedFundDetail(${d.fund.id})">
+        return `<div class="fund-card" data-action="showClosedFundDetail" data-arg="${d.fund.id}">
           <div class="actions">
-            <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openFundModal(${d.fund.id})">✏️</button>
-            <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteFund(${d.fund.id})">🗑️</button>
+            <button class="icon-btn" title="Edit" data-action="openFundModal" data-stop="1" data-arg="${d.fund.id}">✏️</button>
+            <button class="icon-btn" title="Delete" data-action="deleteFund" data-stop="1" data-arg="${d.fund.id}">🗑️</button>
           </div>
           <div class="fund-header">
             <div>
@@ -1485,7 +1481,7 @@ async function renderClosedFunds() {
     const rows = groups[cur].map(d => {
       const plClass = d.realisedPL >= 0 ? 'positive' : 'negative';
       return `<tr>
-        <td><a href="#" onclick="event.preventDefault(); showClosedFundDetail(${d.fund.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(d.fund.name)}</a>${d.fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(d.fund.code)}</div>` : ''}</td>
+        <td><a href="#" data-action="showClosedFundDetail" data-prevent="1" data-arg="${d.fund.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(d.fund.name)}</a>${d.fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(d.fund.code)}</div>` : ''}</td>
         <td>${ownerBadgeHtml(d.fund.ownerIds, membersById)}</td>
         <td>${escapeHtml(d.fund.category)}</td>
         <td>${formatCurrency(d.invested, d.fund.currency)}</td>
@@ -1496,8 +1492,8 @@ async function renderClosedFunds() {
         <td>${d.holdingPeriod}</td>
         <td>${escapeHtml(d.closedDate)}</td>
         <td><div class="tx-actions">
-          <button class="icon-btn" title="Edit" onclick="openFundModal(${d.fund.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteFund(${d.fund.id})">🗑️</button>
+          <button class="icon-btn" title="Edit" data-action="openFundModal" data-arg="${d.fund.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteFund" data-arg="${d.fund.id}">🗑️</button>
         </div></td>
       </tr>`;
     }).join('');
@@ -1707,8 +1703,8 @@ async function renderMembersList() {
   list.innerHTML = members.map(m => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0;">
       <span style="width:10px;height:10px;border-radius:50%;background:${memberColor(m.id)};flex-shrink:0;"></span>
-      <input type="text" value="${escapeHtml(m.name)}" id="member-name-${m.id}" style="flex:1;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;" onchange="renameMember(${m.id}, this.value)">
-      <button class="icon-btn" title="Delete" onclick="deleteMember(${m.id}, ${escapeHtml(JSON.stringify(m.name))})">🗑️</button>
+      <input type="text" value="${escapeHtml(m.name)}" id="member-name-${m.id}" style="flex:1;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;" data-action="renameMember" data-arg="${m.id}">
+      <button class="icon-btn" title="Delete" data-action="deleteMember" data-arg="${m.id}" data-arg2="${escapeHtml(m.name)}">🗑️</button>
     </div>
   `).join('');
 }
@@ -1781,8 +1777,8 @@ async function openPrintOwnerModal(reportType) {
   document.getElementById('printOwnerModalTitle').textContent = titles[reportType];
   const printFn = printFns[reportType];
   const allLabel = allLabels[reportType];
-  let html = `<button class="btn btn-primary" style="justify-content:flex-start;" onclick="closePrintOwnerModal(); ${printFn}('All');">${allLabel}</button>`;
-  html += members.map(m => `<button class="btn btn-secondary" style="justify-content:flex-start;" onclick="closePrintOwnerModal(); ${printFn}('${m.id}');">👤 ${escapeHtml(m.name)} Only</button>`).join('');
+  let html = `<button class="btn btn-primary" style="justify-content:flex-start;" data-action="closeAndPrint" data-fn="${printFn}" data-arg="All">${allLabel}</button>`;
+  html += members.map(m => `<button class="btn btn-secondary" style="justify-content:flex-start;" data-action="closeAndPrint" data-fn="${printFn}" data-arg="${m.id}">👤 ${escapeHtml(m.name)} Only</button>`).join('');
   container.innerHTML = html;
   document.getElementById('printOwnerModal').classList.add('active');
 }
@@ -2395,7 +2391,7 @@ async function renderAmanahFunds() {
       const active = isAmanahFundActive(fund, transactions);
       const plClass = m.pl >= 0 ? 'positive' : 'negative';
       return `<tr>
-        <td><a href="#" onclick="event.preventDefault(); showAmanahFundDetail(${fund.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fund.name)}</a>${fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(fund.code)}</div>` : ''}</td>
+        <td><a href="#" data-action="showAmanahFundDetail" data-prevent="1" data-arg="${fund.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fund.name)}</a>${fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(fund.code)}</div>` : ''}</td>
         <td>${ownerBadgeHtml(fund.ownerIds, membersById)}</td>
         <td>${m.units.toFixed(4)}</td>
         <td>${formatCurrency(fund.price, fund.currency)}</td>
@@ -2406,9 +2402,9 @@ async function renderAmanahFunds() {
         <td class="${plClass}">${m.returnPct.toFixed(2)}%</td>
         <td>${active ? '<span class="positive">Active</span>' : '<span style="color:#a0aec0;">Redeemed</span>'}</td>
         <td><div class="tx-actions">
-          <button class="icon-btn" title="Ledger" onclick="filterAmanahLedgerByScheme(${fund.id})">📒</button>
-          <button class="icon-btn" title="Edit" onclick="openAmanahFundModal(${fund.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteAmanahFund(${fund.id})">🗑️</button>
+          <button class="icon-btn" title="Ledger" data-action="filterAmanahLedgerByScheme" data-arg="${fund.id}">📒</button>
+          <button class="icon-btn" title="Edit" data-action="openAmanahFundModal" data-arg="${fund.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteAmanahFund" data-arg="${fund.id}">🗑️</button>
         </div></td>
       </tr>`;
     }).join('') + `</tbody></table></div>`;
@@ -2422,13 +2418,13 @@ async function renderAmanahFunds() {
     const plClass = m.pl >= 0 ? 'positive' : 'negative';
     return `<div class="fund-card">
       <div class="actions">
-        <button class="icon-btn" title="Ledger" onclick="event.stopPropagation(); filterAmanahLedgerByScheme(${fund.id})">📒</button>
-        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openAmanahFundModal(${fund.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteAmanahFund(${fund.id})">🗑️</button>
+        <button class="icon-btn" title="Ledger" data-action="filterAmanahLedgerByScheme" data-stop="1" data-arg="${fund.id}">📒</button>
+        <button class="icon-btn" title="Edit" data-action="openAmanahFundModal" data-stop="1" data-arg="${fund.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteAmanahFund" data-stop="1" data-arg="${fund.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
-          <div class="fund-name"><a href="#" onclick="event.preventDefault(); showAmanahFundDetail(${fund.id});" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fund.name)}</a>${!active ? ' <span style="font-size:11px;font-weight:500;color:#a0aec0;">(Redeemed)</span>' : ''}</div>
+          <div class="fund-name"><a href="#" data-action="showAmanahFundDetail" data-prevent="1" data-arg="${fund.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fund.name)}</a>${!active ? ' <span style="font-size:11px;font-weight:500;color:#a0aec0;">(Redeemed)</span>' : ''}</div>
           <div style="font-size: 12px; color: #718096; margin-top: 4px;">${[fund.code, fund.currency].filter(Boolean).join(' | ')}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(fund.ownerIds, membersById)}</div>
         </div>
@@ -2723,8 +2719,8 @@ async function renderAmanahLedger() {
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="editAmanahTx(${tx.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteAmanahTx(${tx.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="editAmanahTx" data-arg="${tx.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteAmanahTx" data-arg="${tx.id}">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -2905,7 +2901,7 @@ async function renderKwspAccounts() {
       <tbody>` + accounts.map(account => {
       const m = calcKwspMetrics(account, transactions);
       return `<tr>
-        <td><a href="#" onclick="event.preventDefault(); showKwspAccountDetail(${account.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(account.name)}</a></td>
+        <td><a href="#" data-action="showKwspAccountDetail" data-prevent="1" data-arg="${account.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(account.name)}</a></td>
         <td>${ownerBadgeHtml(account.ownerIds, membersById)}</td>
         <td>${formatCurrency(m.balance, account.currency)}</td>
         <td>${formatCurrency(m.employeeContrib, account.currency)}</td>
@@ -2914,9 +2910,9 @@ async function renderKwspAccounts() {
         <td>${formatCurrency(m.totalWithdrawals, account.currency)}</td>
         <td class="positive">${m.returnPct.toFixed(2)}%</td>
         <td><div class="tx-actions">
-          <button class="icon-btn" title="Ledger" onclick="event.stopPropagation(); filterKwspLedgerByAccount(${account.id})">📒</button>
-          <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openKwspAccountModal(${account.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteKwspAccount(${account.id})">🗑️</button>
+          <button class="icon-btn" title="Ledger" data-action="filterKwspLedgerByAccount" data-stop="1" data-arg="${account.id}">📒</button>
+          <button class="icon-btn" title="Edit" data-action="openKwspAccountModal" data-stop="1" data-arg="${account.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteKwspAccount" data-stop="1" data-arg="${account.id}">🗑️</button>
         </div></td>
       </tr>`;
     }).join('') + `</tbody></table></div>`;
@@ -2928,13 +2924,13 @@ async function renderKwspAccounts() {
     const m = calcKwspMetrics(account, transactions);
     return `<div class="fund-card">
       <div class="actions">
-        <button class="icon-btn" title="Ledger" onclick="event.stopPropagation(); filterKwspLedgerByAccount(${account.id})">📒</button>
-        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openKwspAccountModal(${account.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteKwspAccount(${account.id})">🗑️</button>
+        <button class="icon-btn" title="Ledger" data-action="filterKwspLedgerByAccount" data-stop="1" data-arg="${account.id}">📒</button>
+        <button class="icon-btn" title="Edit" data-action="openKwspAccountModal" data-stop="1" data-arg="${account.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteKwspAccount" data-stop="1" data-arg="${account.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
-          <div class="fund-name"><a href="#" onclick="event.preventDefault(); showKwspAccountDetail(${account.id});" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(account.name)}</a></div>
+          <div class="fund-name"><a href="#" data-action="showKwspAccountDetail" data-prevent="1" data-arg="${account.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(account.name)}</a></div>
           <div style="font-size: 12px; color: #718096; margin-top: 4px;">${account.currency}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(account.ownerIds, membersById)}</div>
         </div>
@@ -3150,8 +3146,8 @@ async function renderKwspLedger() {
       <td>${formatCurrency(tx.amount, account && account.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="editKwspTx(${tx.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteKwspTx(${tx.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="editKwspTx" data-arg="${tx.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteKwspTx" data-arg="${tx.id}">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -3399,10 +3395,10 @@ function renderFdAttachmentPreview() {
   let html = '';
   fdExistingAttachments.forEach((att, i) => {
     if (fdRemovedExistingIndexes.has(i)) return;
-    html += '<div style="margin-top:4px;">📎 ' + escapeHtml(att.name) + ' <a href="#" onclick="event.preventDefault(); removeFdExistingAttachment(' + i + ');" style="color:#e53e3e;">Remove</a></div>';
+    html += '<div style="margin-top:4px;">📎 ' + escapeHtml(att.name) + ' <a href="#" data-action="removeFdExistingAttachment" data-arg="' + i + '" style="color:#e53e3e;">Remove</a></div>';
   });
   fdAttachmentsPending.forEach((att, i) => {
-    html += '<div style="margin-top:4px;">📎 ' + escapeHtml(att.name) + ' <span style="color:#48bb78;">(new)</span> <a href="#" onclick="event.preventDefault(); removeFdPendingAttachment(' + i + ');" style="color:#e53e3e;">Remove</a></div>';
+    html += '<div style="margin-top:4px;">📎 ' + escapeHtml(att.name) + ' <span style="color:#48bb78;">(new)</span> <a href="#" data-action="removeFdPendingAttachment" data-arg="' + i + '" style="color:#e53e3e;">Remove</a></div>';
   });
   container.innerHTML = html || '<span style="color:#a0aec0;">No attachments</span>';
 }
@@ -3539,7 +3535,7 @@ async function renderFdAccounts() {
       <tbody>` + deposits.map(fd => {
       const overdue = isFdOverdue(fd);
       return `<tr style="${overdue ? 'background:#fff5f5;' : ''}">
-        <td><a href="#" onclick="event.preventDefault(); showFdDetail(${fd.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fd.bankName)}</a>${getFdAttachmentsList(fd).length > 0 ? ' 📎' : ''}</td>
+        <td><a href="#" data-action="showFdDetail" data-prevent="1" data-arg="${fd.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fd.bankName)}</a>${getFdAttachmentsList(fd).length > 0 ? ' 📎' : ''}</td>
         <td>${ownerBadgeHtml(fd.ownerIds, membersById)}</td>
         <td>${formatCurrency(fd.principal, fd.currency)}</td>
         <td>${parseFloat(fd.interestRate).toFixed(2)}%</td>
@@ -3548,9 +3544,9 @@ async function renderFdAccounts() {
         <td>${fd.autoRenew === true || fd.autoRenew === 'true' ? '✅ Yes' : '❌ No'}</td>
         <td>${fdMaturityStatusText(fd)}</td>
         <td><div class="tx-actions">
-          ${fd.status === 'Active' ? `<button class="icon-btn" title="Process Maturity" onclick="openProcessMaturityModal(${fd.id})">📜</button>` : ''}
-          <button class="icon-btn" title="Edit" onclick="openFdModal(${fd.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteFd(${fd.id})">🗑️</button>
+          ${fd.status === 'Active' ? `<button class="icon-btn" title="Process Maturity" data-action="openProcessMaturityModal" data-arg="${fd.id}">📜</button>` : ''}
+          <button class="icon-btn" title="Edit" data-action="openFdModal" data-arg="${fd.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteFd" data-arg="${fd.id}">🗑️</button>
         </div></td>
       </tr>`;
     }).join('') + `</tbody></table></div>`;
@@ -3564,13 +3560,13 @@ async function renderFdAccounts() {
     const badgeColor = fd.status !== 'Active' ? '#a0aec0' : (overdue ? '#e53e3e' : (soon ? '#dd6b20' : '#48bb78'));
     return `<div class="fund-card" style="${overdue ? 'border-color:#feb2b2;' : ''}">
       <div class="actions">
-        ${fd.status === 'Active' ? `<button class="icon-btn" title="Process Maturity" onclick="event.stopPropagation(); openProcessMaturityModal(${fd.id})">📜</button>` : ''}
-        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openFdModal(${fd.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteFd(${fd.id})">🗑️</button>
+        ${fd.status === 'Active' ? `<button class="icon-btn" title="Process Maturity" data-action="openProcessMaturityModal" data-stop="1" data-arg="${fd.id}">📜</button>` : ''}
+        <button class="icon-btn" title="Edit" data-action="openFdModal" data-stop="1" data-arg="${fd.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteFd" data-stop="1" data-arg="${fd.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
-          <div class="fund-name"><a href="#" onclick="event.preventDefault(); showFdDetail(${fd.id});" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fd.bankName)}</a>${getFdAttachmentsList(fd).length > 0 ? ' <span title="Has attachment">📎</span>' : ''}</div>
+          <div class="fund-name"><a href="#" data-action="showFdDetail" data-prevent="1" data-arg="${fd.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fd.bankName)}</a>${getFdAttachmentsList(fd).length > 0 ? ' <span title="Has attachment">📎</span>' : ''}</div>
           <div style="font-size: 12px; color: #718096; margin-top: 4px;">${fd.currency} · ${parseFloat(fd.interestRate).toFixed(2)}% p.a. · ${fd.autoRenew === true || fd.autoRenew === 'true' ? 'Auto-Renew' : 'No Auto-Renew'}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(fd.ownerIds, membersById)}</div>
         </div>
@@ -3689,11 +3685,11 @@ async function showFdDetail(fdId) {
     attachEl.innerHTML = '<strong>Receipts:</strong><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">' +
       attachments.map((att, i) => {
         if (att.type && att.type.startsWith('image/')) {
-          return '<a href="#" onclick="event.preventDefault(); openFdAttachment(' + fd.id + ', ' + i + ');"><img src="' + att.data + '" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #e2e8f0;"></a>';
+          return '<a href="#" data-action="openFdAttachment" data-arg="' + fd.id + '" data-arg2="' + i + '"><img src="' + att.data + '" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #e2e8f0;"></a>';
         }
         // Opens in the in-app viewer rather than navigating to the data: URL directly —
         // browsers treat a direct data: URL navigation as a download, not something to view.
-        return '<a href="#" onclick="event.preventDefault(); openFdAttachment(' + fd.id + ', ' + i + ');" style="color:#667eea;align-self:center;">📎 ' + escapeHtml(att.name || 'View attachment') + '</a>';
+        return '<a href="#" data-action="openFdAttachment" data-arg="' + fd.id + '" data-arg2="' + i + '" style="color:#667eea;align-self:center;">📎 ' + escapeHtml(att.name || 'View attachment') + '</a>';
       }).join('') + '</div>';
   } else {
     attachEl.innerHTML = '';
@@ -3712,7 +3708,7 @@ async function showFdDetail(fdId) {
         <td class="positive">${formatCurrency(p.amount, fd.currency)}</td>
         <td>${escapeHtml(p.notes || '-')}</td>
         <td><div class="tx-actions">
-          <button class="icon-btn" title="Delete" onclick="deleteFdInterestPayout(${p.id})">🗑️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteFdInterestPayout" data-arg="${p.id}">🗑️</button>
         </div></td>
       </tr>`).join('');
     }
@@ -3920,7 +3916,7 @@ async function renderFdMaturityRecords() {
   tbody.innerHTML = sorted.map(r => {
     const stillExists = existingFdIds.has(r.fixedDepositId);
     const bankCell = stillExists
-      ? `<a href="#" onclick="event.preventDefault(); showFdDetail(${r.fixedDepositId});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(r.bankName)}</a>`
+      ? `<a href="#" data-action="showFdDetail" data-prevent="1" data-arg="${r.fixedDepositId}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(r.bankName)}</a>`
       : `${escapeHtml(r.bankName)} <span style="color:#a0aec0;font-size:11px;">(deposit deleted)</span>`;
     return `<tr>
     <td>${escapeHtml(r.maturityDate)}</td>
@@ -4560,7 +4556,7 @@ async function renderReProperties() {
       <tbody>` + properties.map(p => {
       const m = calcRePropertyMetrics(p, loanTx, cashflowTx);
       return `<tr>
-        <td><a href="#" onclick="event.preventDefault(); showRePropertyDetail(${p.id});" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(p.name)}</a></td>
+        <td><a href="#" data-action="showRePropertyDetail" data-prevent="1" data-arg="${p.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(p.name)}</a></td>
         <td>${ownerBadgeHtml(p.ownerIds, membersById)}</td>
         <td>${p.type || ''}</td>
         <td>${p.status || ''}</td>
@@ -4568,8 +4564,8 @@ async function renderReProperties() {
         <td>${formatDebtAmount(m.mortgage, p.currency)}</td>
         <td>${formatCurrency(m.equity, p.currency)}</td>
         <td><div class="tx-actions">
-          <button class="icon-btn" title="Edit" onclick="openPropertyModal(${p.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteReProperty(${p.id})">🗑️</button>
+          <button class="icon-btn" title="Edit" data-action="openPropertyModal" data-arg="${p.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteReProperty" data-arg="${p.id}">🗑️</button>
         </div></td>
       </tr>`;
     }).join('') + `</tbody></table></div>`;
@@ -4581,12 +4577,12 @@ async function renderReProperties() {
     const m = calcRePropertyMetrics(p, loanTx, cashflowTx);
     return `<div class="fund-card">
       <div class="actions">
-        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openPropertyModal(${p.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteReProperty(${p.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openPropertyModal" data-stop="1" data-arg="${p.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteReProperty" data-stop="1" data-arg="${p.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
-          <div class="fund-name"><a href="#" onclick="event.preventDefault(); showRePropertyDetail(${p.id});" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(p.name)}</a></div>
+          <div class="fund-name"><a href="#" data-action="showRePropertyDetail" data-prevent="1" data-arg="${p.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(p.name)}</a></div>
           <div style="font-size: 12px; color: #718096; margin-top: 4px;">${p.type || ''} · ${p.status || ''} · ${p.currency || getBaseCurrency()}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(p.ownerIds, membersById)}</div>
         </div>
@@ -4663,8 +4659,8 @@ async function renderReCashflowLedger() {
       <td>${escapeHtml(t.category) || ''}</td>
       <td style="color:${t.type === 'INCOME' ? '#48bb78' : '#f56565'};font-weight:600;">${t.type === 'INCOME' ? '+' : '-'}${formatCurrency(t.amount, p ? p.currency : undefined)}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="openReTxModal(${t.propertyId}, ${t.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteReTx(${t.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openReTxModal" data-arg="${t.propertyId}" data-arg2="${t.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteReTx" data-arg="${t.id}">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -4685,8 +4681,8 @@ async function renderReLoanLedger() {
       <td>${reLoanItemColumnHtml(t, cur)}</td>
       <td>${reLoanAmountColumnHtml(t, cur)}</td>
       <td><div class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="openReLoanTxModal(${t.propertyId}, ${t.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteReLoanTx(${t.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openReLoanTxModal" data-arg="${t.propertyId}" data-arg2="${t.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteReLoanTx" data-arg="${t.id}">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -4708,7 +4704,7 @@ function addRePurchaseRow(date = '', category = 'Deposit', particular = '', amou
   tr.innerHTML = `
     <td style="padding:4px;"><input type="date" value="${escapeHtml(date)}" class="re-pb-date" style="${inputStyle}"></td>
     <td style="padding:4px;">
-      <select class="re-pb-category" onchange="recalculateRePurchaseTotal()" style="${inputStyle}">
+      <select class="re-pb-category" data-action="recalculateRePurchaseTotal" style="${inputStyle}">
         <option value="Deposit" ${category === 'Deposit' ? 'selected' : ''}>Deposit</option>
         <option value="Bank Loan" ${category === 'Bank Loan' ? 'selected' : ''}>Bank Loan</option>
         <option value="Credit Note" ${category === 'Credit Note' ? 'selected' : ''}>Credit Note (-)</option>
@@ -4716,8 +4712,8 @@ function addRePurchaseRow(date = '', category = 'Deposit', particular = '', amou
       </select>
     </td>
     <td style="padding:4px;"><input type="text" value="${escapeHtml(particular) || ''}" placeholder="e.g. Deposit / Rebate" class="re-pb-particular" style="${inputStyle}"></td>
-    <td style="padding:4px;"><input type="number" step="0.01" value="${escapeHtml(String(amount))}" oninput="recalculateRePurchaseTotal()" placeholder="0.00" class="re-pb-amount" style="${inputStyle}text-align:right;"></td>
-    <td style="padding:4px;text-align:center;"><button type="button" onclick="removeRePurchaseRow('re-pb-row-${rowId}')" class="icon-btn" title="Remove">🗑️</button></td>
+    <td style="padding:4px;"><input type="number" step="0.01" value="${escapeHtml(String(amount))}" data-action="recalculateRePurchaseTotal" placeholder="0.00" class="re-pb-amount" style="${inputStyle}text-align:right;"></td>
+    <td style="padding:4px;text-align:center;"><button type="button" data-action="removeRePurchaseRow" data-arg="re-pb-row-${rowId}" class="icon-btn" title="Remove">🗑️</button></td>
   `;
   tbody.appendChild(tr);
   recalculateRePurchaseTotal();
@@ -4937,7 +4933,7 @@ async function showRePropertyDetail(id) {
   document.getElementById('red-cashflow-body').innerHTML = propCashTx.map(t => `<tr>
     <td><div style="font-weight:600;">${escapeHtml(t.date)}</div><span class="re-date-badge ${t.type === 'INCOME' ? 'income' : 'expense'}">${t.type === 'INCOME' ? 'INCOME' : 'EXPENSE'}</span></td><td>${escapeHtml(t.category) || ''}</td>
     <td style="color:${t.type === 'INCOME' ? '#48bb78' : '#f56565'};font-weight:600;">${t.type === 'INCOME' ? '+' : '-'}${formatCurrency(t.amount, p.currency)}</td>
-    <td><div class="tx-actions"><button class="icon-btn" title="Edit" onclick="openReTxModal(${id}, ${t.id})">✏️</button><button class="icon-btn" title="Delete" onclick="deleteReTx(${t.id})">🗑️</button></div></td>
+    <td><div class="tx-actions"><button class="icon-btn" title="Edit" data-action="openReTxModal" data-arg="${id}" data-arg2="${t.id}">✏️</button><button class="icon-btn" title="Delete" data-action="deleteReTx" data-arg="${t.id}">🗑️</button></div></td>
   </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#a0aec0;">No entries yet</td></tr>';
 
   const propLoanTx = loanTx.filter(t => t.propertyId === id).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -4945,7 +4941,7 @@ async function showRePropertyDetail(id) {
     <td><div style="font-weight:600;">${escapeHtml(t.date)}</div>${reLoanBadgeHtml(t.action)}</td>
     <td>${reLoanItemColumnHtml(t, p.currency)}</td>
     <td>${reLoanAmountColumnHtml(t, p.currency)}</td>
-    <td><div class="tx-actions"><button class="icon-btn" title="Edit" onclick="openReLoanTxModal(${id}, ${t.id})">✏️</button><button class="icon-btn" title="Delete" onclick="deleteReLoanTx(${t.id})">🗑️</button></div></td>
+    <td><div class="tx-actions"><button class="icon-btn" title="Edit" data-action="openReLoanTxModal" data-arg="${id}" data-arg2="${t.id}">✏️</button><button class="icon-btn" title="Delete" data-action="deleteReLoanTx" data-arg="${t.id}">🗑️</button></div></td>
   </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:#a0aec0;">No entries yet</td></tr>';
 
   document.getElementById('rePropertyDetailModal').classList.add('active');
@@ -5331,7 +5327,7 @@ async function renderFxAll() {
     card.innerHTML = `
       <div class="fx-head">
         <div class="fx-title">${currencyFlag(code)} ${code}</div>
-        <button class="icon-btn" title="Add transaction" onclick="event.stopPropagation(); openFxTxModal('Buy', '${code}')">➕</button>
+        <button class="icon-btn" title="Add transaction" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${code}">➕</button>
       </div>
       <div style="font-size:16px;font-weight:bold;color:#1a202c;">${h.amount.toLocaleString()} <span style="font-size:11px;font-weight:normal;color:#718096;">${code}</span></div>
       <div class="fx-details">
@@ -5360,7 +5356,7 @@ async function renderFxAll() {
       <td>${h.rateSet ? h.marketRate.toFixed(4) : '⚠️ not set'}</td>
       <td style="color:${h.pl >= 0 ? '#48bb78' : '#f56565'};font-weight:bold;">${h.pl >= 0 ? '+' : ''}${formatCurrency(h.pl, base)}</td>
       <td style="color:${h.pl >= 0 ? '#48bb78' : '#f56565'};font-weight:bold;">${h.plPct.toFixed(2)}%</td>
-      <td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="event.stopPropagation(); openFxTxModal('Buy', '${code}')">+ Tx</button></td>
+      <td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${code}">+ Tx</button></td>
     `;
     tableBody.appendChild(tr);
   });
@@ -5404,7 +5400,7 @@ function fxRenderTransactions(txs, membersById) {
   let filtered = txs;
   if (fxSelectedFilterCurrency) {
     filtered = txs.filter(t => t.currency === fxSelectedFilterCurrency);
-    badgeContainer.innerHTML = `<span class="fx-badge">Filtered: ${currencyFlag(fxSelectedFilterCurrency)} ${fxSelectedFilterCurrency} <span style="cursor:pointer;" onclick="fxFilterLedger(null)">✖</span></span>`;
+    badgeContainer.innerHTML = `<span class="fx-badge">Filtered: ${currencyFlag(fxSelectedFilterCurrency)} ${fxSelectedFilterCurrency} <span style="cursor:pointer;" data-action="fxFilterLedger">✖</span></span>`;
   }
 
   const base = getBaseCurrency();
@@ -5420,8 +5416,8 @@ function fxRenderTransactions(txs, membersById) {
       <td>${ownerBadgeHtml(tx.ownerIds, membersById)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
       <td>
-        <button onclick="editFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
-        <button onclick="deleteFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
+        <button data-action="editFxTx" data-arg="${tx.id}" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
+        <button data-action="deleteFxTx" data-arg="${tx.id}" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -5661,8 +5657,8 @@ async function renderFxCurrencyDetail(code) {
         <td>${ownerBadgeHtml(tx.ownerIds, membersById)}</td>
         <td>${escapeHtml(tx.notes || '-')}</td>
         <td>
-          <button onclick="editFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
-          <button onclick="deleteFxTx(${tx.id})" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
+          <button data-action="editFxTx" data-arg="${tx.id}" style="border:none;background:none;cursor:pointer;margin-right:8px;" title="Edit">✏️</button>
+          <button data-action="deleteFxTx" data-arg="${tx.id}" style="border:none;background:none;cursor:pointer;color:#e53e3e;" title="Delete">🗑️</button>
         </td>
       </tr>
     `).join('');
@@ -6235,17 +6231,17 @@ async function addForecastFundRow(data) {
   const tr = document.createElement('tr');
   tr.id = 'ffrow-' + id;
   tr.innerHTML = `
-    <td><select class="ff-source" onchange="onForecastFundSourceChange(${id})">
+    <td><select class="ff-source" data-action="onForecastFundSourceChange" data-arg="${id}">
       <option value="unittrust">Unit Trust</option>
       <option value="amanah">Amanah Saham</option>
       <option value="kwsp">KWSP</option>
       <option value="fd">Fixed Deposit</option>
     </select>
     <div class="ff-count" style="font-size:11px;color:#a0aec0;margin-top:2px;"></div></td>
-    <td><input type="number" class="ff-amount" step="0.01" oninput="recalcForecastTotals()" style="width:120px;text-align:right;"></td>
-    <td><input type="number" class="ff-rate" step="0.01" placeholder="0.00" oninput="recalcForecastTotals()" style="width:80px;text-align:right;"></td>
+    <td><input type="number" class="ff-amount" step="0.01" data-action="recalcForecastTotals" style="width:120px;text-align:right;"></td>
+    <td><input type="number" class="ff-rate" step="0.01" placeholder="0.00" data-action="recalcForecastTotals" style="width:80px;text-align:right;"></td>
     <td class="ff-yearly" style="text-align:right;font-weight:600;">$0.00</td>
-    <td><button type="button" class="icon-btn" title="Remove" onclick="this.closest('tr').remove(); recalcForecastTotals();">🗑️</button></td>`;
+    <td><button type="button" class="icon-btn" title="Remove" data-action="removeRowRecalc">🗑️</button></td>`;
   document.getElementById('forecastFundBody').appendChild(tr);
   if (data) {
     tr.querySelector('.ff-source').value = data.sourceType || 'unittrust';
@@ -6269,10 +6265,10 @@ async function addForecastPropertyRow(data) {
   const tr = document.createElement('tr');
   tr.id = 'fprow-' + id;
   tr.innerHTML = `
-    <td><select class="fp-property" onchange="onForecastPropertyChange(${id})"></select></td>
-    <td><input type="number" class="fp-rent" step="0.01" oninput="recalcForecastTotals()" style="width:120px;text-align:right;"></td>
+    <td><select class="fp-property" data-action="onForecastPropertyChange" data-arg="${id}"></select></td>
+    <td><input type="number" class="fp-rent" step="0.01" data-action="recalcForecastTotals" style="width:120px;text-align:right;"></td>
     <td class="fp-yearly" style="text-align:right;font-weight:600;">$0.00</td>
-    <td><button type="button" class="icon-btn" title="Remove" onclick="this.closest('tr').remove(); recalcForecastTotals();">🗑️</button></td>`;
+    <td><button type="button" class="icon-btn" title="Remove" data-action="removeRowRecalc">🗑️</button></td>`;
   document.getElementById('forecastPropertyBody').appendChild(tr);
   await populateForecastPropertyOptions(id);
   if (data) {
@@ -6414,12 +6410,12 @@ async function renderForecastList() {
     const propCount = (f.propertyLines || []).length;
     return `<div class="fund-card">
       <div class="actions">
-        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); openForecastModal(${f.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="event.stopPropagation(); deleteForecast(${f.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openForecastModal" data-stop="1" data-arg="${f.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteForecast" data-stop="1" data-arg="${f.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
-          <div class="fund-name"><a href="#" onclick="event.preventDefault(); openForecastModal(${f.id});" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(f.name)}</a></div>
+          <div class="fund-name"><a href="#" data-action="openForecastModal" data-prevent="1" data-arg="${f.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(f.name)}</a></div>
           <div style="font-size: 12px; color: #718096; margin-top: 4px;">${scopeLabel} · ${fundCount} fund${fundCount === 1 ? '' : 's'} · ${propCount} propert${propCount === 1 ? 'y' : 'ies'}</div>
         </div>
       </div>
@@ -6624,8 +6620,8 @@ async function mypLoadFunds() {
       <td style="text-align:right;">${formatCurrency(f.initialAmount)}</td>
       <td style="text-align:right;">${parseFloat(f.returnRate || 0).toFixed(2)}%</td>
       <td class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="openMypFundModal(${f.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteMypFund(${f.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openMypFundModal" data-arg="${f.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteMypFund" data-arg="${f.id}">🗑️</button>
       </td>
     </tr>`).join('') + '</tbody></table></div>';
 }
@@ -6727,8 +6723,8 @@ async function mypLoadRules() {
       <td style="text-align:right;">${r.priority}</td>
       <td style="text-align:right;">${r.allocationPct}%</td>
       <td class="tx-actions">
-        <button class="icon-btn" title="Edit" onclick="openMypRuleModal(${r.id})">✏️</button>
-        <button class="icon-btn" title="Delete" onclick="deleteMypRule(${r.id})">🗑️</button>
+        <button class="icon-btn" title="Edit" data-action="openMypRuleModal" data-arg="${r.id}">✏️</button>
+        <button class="icon-btn" title="Delete" data-action="deleteMypRule" data-arg="${r.id}">🗑️</button>
       </td>
     </tr>`).join('') + '</tbody></table></div>';
 }
@@ -6801,8 +6797,8 @@ async function mypLoadIncome() {
         <td><b>${escapeHtml(c.name)}</b></td>
         <td style="font-size:12px;">${rText}</td>
         <td class="tx-actions">
-          <button class="icon-btn" title="Edit" onclick="openMypIncomeModal(${c.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteMypIncome(${c.id})">🗑️</button>
+          <button class="icon-btn" title="Edit" data-action="openMypIncomeModal" data-arg="${c.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteMypIncome" data-arg="${c.id}">🗑️</button>
         </td>
       </tr>`;
     }).join('') + '</tbody></table></div>';
@@ -6818,7 +6814,7 @@ function mypAddIncomeRangeRow(startVal, endVal, amtVal) {
     <div class="form-group" style="margin-bottom:10px;"><label>Start Year</label><input type="number" class="mir-start" value="${startVal != null ? startVal : ''}"></div>
     <div class="form-group" style="margin-bottom:10px;"><label>End Year</label><input type="number" class="mir-end" value="${endVal != null ? endVal : ''}"></div>
     <div class="form-group" style="margin-bottom:10px;"><label>Amount / yr</label><input type="number" class="mir-amt" step="0.01" value="${amtVal != null ? amtVal : ''}"></div>
-    <button type="button" class="icon-btn" title="Remove" style="margin-bottom:10px;" onclick="document.getElementById('myprow-${id}').remove();">🗑️</button>`;
+    <button type="button" class="icon-btn" title="Remove" style="margin-bottom:10px;" data-action="removeMyprow" data-arg="${id}">🗑️</button>`;
   document.getElementById('mypIncomeRangesContainer').appendChild(row);
 }
 
@@ -6888,8 +6884,8 @@ async function mypLoadExpense() {
         <td><b>${escapeHtml(c.name)}</b></td>
         <td style="font-size:12px;">${rText}</td>
         <td class="tx-actions">
-          <button class="icon-btn" title="Edit" onclick="openMypExpenseModal(${c.id})">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="deleteMypExpense(${c.id})">🗑️</button>
+          <button class="icon-btn" title="Edit" data-action="openMypExpenseModal" data-arg="${c.id}">✏️</button>
+          <button class="icon-btn" title="Delete" data-action="deleteMypExpense" data-arg="${c.id}">🗑️</button>
         </td>
       </tr>`;
     }).join('') + '</tbody></table></div>';
@@ -6905,7 +6901,7 @@ function mypAddExpenseRangeRow(startVal, endVal, amtVal) {
     <div class="form-group" style="margin-bottom:10px;"><label>Start Year</label><input type="number" class="mer-start" value="${startVal != null ? startVal : ''}"></div>
     <div class="form-group" style="margin-bottom:10px;"><label>End Year</label><input type="number" class="mer-end" value="${endVal != null ? endVal : ''}"></div>
     <div class="form-group" style="margin-bottom:10px;"><label>Amount / yr</label><input type="number" class="mer-amt" step="0.01" value="${amtVal != null ? amtVal : ''}"></div>
-    <button type="button" class="icon-btn" title="Remove" style="margin-bottom:10px;" onclick="document.getElementById('myprow-${id}').remove();">🗑️</button>`;
+    <button type="button" class="icon-btn" title="Remove" style="margin-bottom:10px;" data-action="removeMyprow" data-arg="${id}">🗑️</button>`;
   document.getElementById('mypExpenseRangesContainer').appendChild(row);
 }
 
@@ -7128,9 +7124,9 @@ async function mypRenderForecastCards() {
   grid.innerHTML = saved.map(s => {
     const net = (s.summary.totalIncome || 0) - (s.summary.totalExpense || 0);
     const genDate = s.generatedAt ? new Date(s.generatedAt).toLocaleDateString() : '';
-    return `<div class="fund-card" style="cursor:pointer;${s.planId === currentMypPlanId ? 'border-color:#667eea;' : ''}" onclick="mypLoadSavedForecast(${s.id})">
+    return `<div class="fund-card" style="cursor:pointer;${s.planId === currentMypPlanId ? 'border-color:#667eea;' : ''}" data-action="mypLoadSavedForecast" data-arg="${s.id}">
       <div class="actions">
-        <button class="icon-btn" title="Delete this saved forecast" onclick="event.stopPropagation(); mypDeleteSavedForecast(${s.id})">🗑️</button>
+        <button class="icon-btn" title="Delete this saved forecast" data-action="mypDeleteSavedForecast" data-stop="1" data-arg="${s.id}">🗑️</button>
       </div>
       <div class="fund-header">
         <div>
@@ -7206,7 +7202,7 @@ async function mypRenderBaselineComparisonTable() {
   const headerRow = document.getElementById('mypBaselineTableHead');
   let headHtml = '<th style="text-align:center;">Year</th><th style="text-align:center;color:#dd6b20;">Live Forecast</th>';
   baselines.forEach(b => {
-    headHtml += `<th style="text-align:center;color:#3182ce;">${escapeHtml(b.name)} <button class="icon-btn" title="Delete baseline column" onclick="mypDeleteBaseline(${b.id})">✕</button></th>`;
+    headHtml += `<th style="text-align:center;color:#3182ce;">${escapeHtml(b.name)} <button class="icon-btn" title="Delete baseline column" data-action="mypDeleteBaseline" data-arg="${b.id}">✕</button></th>`;
   });
   headHtml += '<th style="text-align:center;color:#48bb78;">Actual (EOY)</th><th style="text-align:right;">Variance $</th><th style="text-align:right;">Variance %</th>';
   headerRow.innerHTML = headHtml;
@@ -7224,7 +7220,7 @@ async function mypRenderBaselineComparisonTable() {
       lastBaselineVal = val;
       cols += `<td style="text-align:center;color:#3182ce;font-weight:600;">${formatCurrency(val)}</td>`;
     });
-    cols += `<td style="text-align:center;">$ <input type="number" class="myp-actual-input" style="width:120px;text-align:right;" value="${actualVal}" placeholder="Enter actual" onchange="mypSaveActualResult(${yr}, this.value)"></td>`;
+    cols += `<td style="text-align:center;">$ <input type="number" class="myp-actual-input" style="width:120px;text-align:right;" value="${actualVal}" placeholder="Enter actual" data-action="mypSaveActualResult" data-arg="${yr}"></td>`;
     if (actualVal !== '' && actualVal != null) {
       const diff = actualVal - lastBaselineVal;
       const pct = lastBaselineVal !== 0 ? ((diff / lastBaselineVal) * 100).toFixed(1) : '0.0';
@@ -7284,3 +7280,270 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     });
   });
 }
+
+// ---------------------------------------------------------------------
+// Event delegation dispatcher
+// ---------------------------------------------------------------------
+// Replaces the ~330 inline onclick/onchange/oninput/onkeydown attributes
+// that used to live throughout index.html and this file. Every rendered
+// element now carries a plain data-action="name" attribute (plus, where
+// needed, data-arg / data-arg2 / data-stop / data-prevent) instead of
+// executable inline JS. Because data-* attribute values are only ever
+// read as text via .dataset — never passed to eval() or new Function() —
+// this closes the CSP gap: script-src-attr no longer needs 'unsafe-inline',
+// so even if a future escaping bug let attacker-controlled markup (e.g. an
+// <img onerror=...> payload) reach innerHTML, the browser has nothing to
+// execute — data-action values are inert strings looked up in the ACTIONS
+// table below, not code.
+const ACTIONS = {
+  addForecastFundRow: () => addForecastFundRow(),
+  addForecastPropertyRow: () => addForecastPropertyRow(),
+  addMember: () => addMember(),
+  addRePurchaseRow: () => addRePurchaseRow(),
+  attemptUnlock: () => attemptUnlock(),
+  autoCalcTx: (el) => autoCalcTx(el.dataset.arg),
+  calcAmanahTxAmount: (el) => calcAmanahTxAmount(el.dataset.arg),
+  calcFdMaturityFromTenure: () => calcFdMaturityFromTenure(),
+  cleanupDuplicateReLoanEntries: () => cleanupDuplicateReLoanEntries(),
+  closeAmanahFundDetailModal: () => closeAmanahFundDetailModal(),
+  closeAmanahFundModal: () => closeAmanahFundModal(),
+  closeAmanahTxModal: () => closeAmanahTxModal(),
+  closeAttachmentViewer: () => closeAttachmentViewer(),
+  closeClosedFundModal: () => closeClosedFundModal(),
+  closeCurrencyModal: () => closeCurrencyModal(),
+  closeEncryptionModal: () => closeEncryptionModal(),
+  closeExportModal: () => closeExportModal(),
+  closeFdDetailModal: () => closeFdDetailModal(),
+  closeFdInterestPayoutModal: () => closeFdInterestPayoutModal(),
+  closeFdModal: () => closeFdModal(),
+  closeForecastModal: () => closeForecastModal(),
+  closeFundModal: () => closeFundModal(),
+  closeFxCurrencyDetailModal: () => closeFxCurrencyDetailModal(),
+  closeFxTxModal: () => closeFxTxModal(),
+  closeImportPasscodeModal: () => closeImportPasscodeModal(),
+  closeKwspAccountDetailModal: () => closeKwspAccountDetailModal(),
+  closeKwspAccountModal: () => closeKwspAccountModal(),
+  closeKwspTxModal: () => closeKwspTxModal(),
+  closeMembersModal: () => closeMembersModal(),
+  closeMypExpenseModal: () => closeMypExpenseModal(),
+  closeMypFundModal: () => closeMypFundModal(),
+  closeMypIncomeModal: () => closeMypIncomeModal(),
+  closeMypRuleModal: () => closeMypRuleModal(),
+  closePrintOwnerModal: () => closePrintOwnerModal(),
+  closeProcessMaturityModal: () => closeProcessMaturityModal(),
+  closeReLoanTxModal: () => closeReLoanTxModal(),
+  closeRePrintOptionsModal: () => closeRePrintOptionsModal(),
+  closeRePropertyDetailModal: () => closeRePropertyDetailModal(),
+  closeRePropertyModal: () => closeRePropertyModal(),
+  closeReTxModal: () => closeReTxModal(),
+  closeTxModal: () => closeTxModal(),
+  confirmExport: () => confirmExport(),
+  confirmImportPasscode: () => confirmImportPasscode(),
+  confirmProcessMaturity: () => confirmProcessMaturity(),
+  confirmRePrintReport: () => confirmRePrintReport(),
+  deleteAmanahFund: (el) => deleteAmanahFund(Number(el.dataset.arg)),
+  deleteAmanahFundFromDetail: () => deleteAmanahFundFromDetail(),
+  deleteAmanahTx: (el) => deleteAmanahTx(Number(el.dataset.arg)),
+  deleteClosedFundFromModal: () => deleteClosedFundFromModal(),
+  deleteCurrentFund: () => deleteCurrentFund(),
+  deleteFd: (el) => deleteFd(Number(el.dataset.arg)),
+  deleteFdFromDetail: () => deleteFdFromDetail(),
+  deleteFdInterestPayout: (el) => deleteFdInterestPayout(Number(el.dataset.arg)),
+  deleteForecast: (el) => deleteForecast(Number(el.dataset.arg)),
+  deleteFund: (el) => deleteFund(Number(el.dataset.arg)),
+  deleteFxTx: (el) => deleteFxTx(Number(el.dataset.arg)),
+  deleteKwspAccount: (el) => deleteKwspAccount(Number(el.dataset.arg)),
+  deleteKwspAccountFromDetail: () => deleteKwspAccountFromDetail(),
+  deleteKwspTx: (el) => deleteKwspTx(Number(el.dataset.arg)),
+  deleteMypExpense: (el) => deleteMypExpense(Number(el.dataset.arg)),
+  deleteMypFund: (el) => deleteMypFund(Number(el.dataset.arg)),
+  deleteMypIncome: (el) => deleteMypIncome(Number(el.dataset.arg)),
+  deleteMypRule: (el) => deleteMypRule(Number(el.dataset.arg)),
+  deletePropertyFromDetail: () => deletePropertyFromDetail(),
+  deleteReLoanTx: (el) => deleteReLoanTx(Number(el.dataset.arg)),
+  deleteReProperty: (el) => deleteReProperty(Number(el.dataset.arg)),
+  deleteReTx: (el) => deleteReTx(Number(el.dataset.arg)),
+  deleteTransaction: (el) => deleteTransaction(Number(el.dataset.arg)),
+  editAmanahFundFromDetail: () => editAmanahFundFromDetail(),
+  editAmanahTx: (el) => editAmanahTx(Number(el.dataset.arg)),
+  editClosedFundFromModal: () => editClosedFundFromModal(),
+  editFdFromDetail: () => editFdFromDetail(),
+  editFxTx: (el) => editFxTx(Number(el.dataset.arg)),
+  editKwspAccountFromDetail: () => editKwspAccountFromDetail(),
+  editKwspTx: (el) => editKwspTx(Number(el.dataset.arg)),
+  editPropertyFromDetail: () => editPropertyFromDetail(),
+  editTransaction: (el) => editTransaction(Number(el.dataset.arg)),
+  fetchLiveRates: () => fetchLiveRates(),
+  filterAmanahLedgerByScheme: (el) => filterAmanahLedgerByScheme(Number(el.dataset.arg)),
+  filterKwspLedgerByAccount: (el) => filterKwspLedgerByAccount(Number(el.dataset.arg)),
+  fxCalcTxRate: () => fxCalcTxRate(),
+  fxCalcTxTotal: () => fxCalcTxTotal(),
+  fxFilterLedger: () => fxFilterLedger(null),
+  fxUpdateTypeLabels: () => fxUpdateTypeLabels(),
+  fxUseMarketRate: () => fxUseMarketRate(),
+  handleFdAttachmentSelect: (el, e) => handleFdAttachmentSelect(e),
+  lockNow: () => lockNow(),
+  mypAddExpenseRangeRow: () => mypAddExpenseRangeRow(),
+  mypAddIncomeRangeRow: () => mypAddIncomeRangeRow(),
+  mypCreatePlan: () => mypCreatePlan(),
+  mypDeleteBaseline: (el) => mypDeleteBaseline(Number(el.dataset.arg)),
+  mypDeletePlan: () => mypDeletePlan(),
+  mypDeleteSavedForecast: (el) => mypDeleteSavedForecast(Number(el.dataset.arg)),
+  mypFreezeBaseline: () => mypFreezeBaseline(),
+  mypLoadSavedForecast: (el) => mypLoadSavedForecast(Number(el.dataset.arg)),
+  mypOnFundScopeSourceChange: () => mypOnFundScopeSourceChange(),
+  mypRenamePlan: () => mypRenamePlan(),
+  mypRunForecast: () => mypRunForecast(),
+  mypSaveActualResult: (el) => mypSaveActualResult(Number(el.dataset.arg), el.value),
+  mypSwitchPlan: (el) => mypSwitchPlan(el.value),
+  mypUpdateYearSnapshot: () => mypUpdateYearSnapshot(),
+  onAmanahTxFundChange: () => onAmanahTxFundChange(),
+  onAmanahTxTypeChange: () => onAmanahTxTypeChange(),
+  onExportEncryptToggleChange: () => onExportEncryptToggleChange(),
+  onForecastFundSourceChange: (el) => onForecastFundSourceChange(Number(el.dataset.arg)),
+  onForecastPropertyChange: (el) => onForecastPropertyChange(Number(el.dataset.arg)),
+  onForecastScopeChange: () => onForecastScopeChange(),
+  onPmActionChange: () => onPmActionChange(),
+  onPmInterestChange: () => onPmInterestChange(),
+  onTxTypeChange: () => onTxTypeChange(),
+  openAmanahFundModal: (el) => openAmanahFundModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openCurrencyModal: () => openCurrencyModal(),
+  openEncryptionModal: () => openEncryptionModal(),
+  openExportModal: () => openExportModal(),
+  openFdModal: (el) => openFdModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openForecastModal: (el) => openForecastModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openFundModal: (el) => openFundModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openFxTxModal: (el) => openFxTxModal(el.dataset.arg, el.dataset.arg2),
+  openKwspAccountModal: (el) => openKwspAccountModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openMembersModal: () => openMembersModal(),
+  openMypExpenseModal: (el) => openMypExpenseModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openMypFundModal: (el) => openMypFundModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openMypIncomeModal: (el) => openMypIncomeModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openMypRuleModal: (el) => openMypRuleModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openPrintOwnerModal: (el) => openPrintOwnerModal(el.dataset.arg),
+  openProcessMaturityModal: (el) => openProcessMaturityModal(Number(el.dataset.arg)),
+  openPropertyModal: (el) => openPropertyModal(el.dataset.arg !== undefined ? Number(el.dataset.arg) : undefined),
+  openReLoanTxModal: (el) => openReLoanTxModal(Number(el.dataset.arg), Number(el.dataset.arg2)),
+  openRePrintOptionsModal: () => openRePrintOptionsModal(),
+  openReTxModal: (el) => openReTxModal(Number(el.dataset.arg), Number(el.dataset.arg2)),
+  openTxModal: () => openTxModal(),
+  openTxModalForCurrentFund: () => openTxModalForCurrentFund(),
+  printClosedFundReport: () => printClosedFundReport(),
+  printFundReport: () => printFundReport(),
+  printWealthReport: (el) => printWealthReport(el.dataset.arg),
+  recalcForecastTotals: () => recalcForecastTotals(),
+  recalculateRePurchaseTotal: () => recalculateRePurchaseTotal(),
+  removeRePurchaseRow: (el) => removeRePurchaseRow(el.dataset.arg),
+  renameMember: (el) => renameMember(Number(el.dataset.arg), el.value),
+  saveAmanahFund: () => saveAmanahFund(),
+  saveAmanahTx: () => saveAmanahTx(),
+  saveCurrencySettings: () => saveCurrencySettings(),
+  saveFd: () => saveFd(),
+  saveFdInterestPayout: () => saveFdInterestPayout(),
+  saveForecast: () => saveForecast(),
+  saveFund: () => saveFund(),
+  saveFxTransaction: () => saveFxTransaction(),
+  saveKwspAccount: () => saveKwspAccount(),
+  saveKwspTx: () => saveKwspTx(),
+  saveMypExpense: () => saveMypExpense(),
+  saveMypFund: () => saveMypFund(),
+  saveMypIncome: () => saveMypIncome(),
+  saveMypRule: () => saveMypRule(),
+  saveReLoanTx: () => saveReLoanTx(),
+  saveReProperty: () => saveReProperty(),
+  saveReTx: () => saveReTx(),
+  saveTransaction: () => saveTransaction(),
+  setAmanahLedgerSchemeFilter: (el) => setAmanahLedgerSchemeFilter(el.value),
+  setAmanahOwnerFilter: (el) => setAmanahOwnerFilter(el.value),
+  setAmanahView: (el) => setAmanahView(el.dataset.arg),
+  setClosedOwnerFilter: (el) => setClosedOwnerFilter(el.value),
+  setClosedView: (el) => setClosedView(el.dataset.arg),
+  setDashOwnerFilter: (el) => setDashOwnerFilter(el.value),
+  setFdOwnerFilter: (el) => setFdOwnerFilter(el.value),
+  setFdView: (el) => setFdView(el.dataset.arg),
+  setFundsOwnerFilter: (el) => setFundsOwnerFilter(el.value),
+  setFundsView: (el) => setFundsView(el.dataset.arg),
+  setFxOwnerFilter: (el) => setFxOwnerFilter(el.value),
+  setFxView: (el) => setFxView(el.dataset.arg),
+  setKwspLedgerAccountFilter: (el) => setKwspLedgerAccountFilter(el.value),
+  setKwspOwnerFilter: (el) => setKwspOwnerFilter(el.value),
+  setKwspView: (el) => setKwspView(el.dataset.arg),
+  setNavView: (el) => setNavView(el.dataset.arg),
+  setReCashflowPropertyFilter: (el) => setReCashflowPropertyFilter(el.value),
+  setReLoanPropertyFilter: (el) => setReLoanPropertyFilter(el.value),
+  setReOwnerFilter: (el) => setReOwnerFilter(el.value),
+  setReView: (el) => setReView(el.dataset.arg),
+  setWealthOwnerFilter: (el) => setWealthOwnerFilter(el.value),
+  showAmanahFundDetail: (el) => showAmanahFundDetail(Number(el.dataset.arg)),
+  showClosedFundDetail: (el) => showClosedFundDetail(Number(el.dataset.arg)),
+  showFdDetail: (el) => showFdDetail(Number(el.dataset.arg)),
+  showFundDetail: (el) => showFundDetail(Number(el.dataset.arg)),
+  showFundsList: () => showFundsList(),
+  showKwspAccountDetail: (el) => showKwspAccountDetail(Number(el.dataset.arg)),
+  showRePropertyDetail: (el) => showRePropertyDetail(Number(el.dataset.arg)),
+  submitDisableEncryption: () => submitDisableEncryption(),
+  submitEnableEncryption: () => submitEnableEncryption(),
+  switchModule: (el) => switchModule(el.dataset.arg),
+  switchPlannerTab: (el) => switchPlannerTab(el.dataset.arg),
+  switchTab: (el) => switchTab(el.dataset.arg),
+  toggleReLoanFields: () => toggleReLoanFields(),
+  updateAllNav: () => updateAllNav(),
+  updateReTxCategories: () => updateReTxCategories(),  // --- Special/composite actions (multi-statement or global-state-dependent
+  //     calls that came from static index.html buttons or dynamic composites) ---
+  editCurrentFund: () => openFundModal(currentFundId),
+  addFxTxCurrent: () => openFxTxModal('Buy', currentFxCode),
+  printFxCurrent: () => printFxSingleReport(currentFxCode),
+  addReTxCurrent: () => openReTxModal(currentRePropertyId),
+  addReLoanTxCurrent: () => openReLoanTxModal(currentRePropertyId),
+  openFdPayoutCurrent: () => openFdInterestPayoutModal(currentFdId),
+  processMaturityCurrent: () => openProcessMaturityModal(currentFdId),
+  printFdCurrent: () => printFdSingleReport(currentFdId),
+  addKwspTxCurrentAndClose: () => { openKwspTxModal(currentKwspAccountId); closeKwspAccountDetailModal(); },
+  printKwspCurrent: () => printKwspAccountReport(currentKwspAccountId),
+  addAmanahTxCurrentAndClose: () => { openAmanahTxModal(currentAmanahFundId); closeAmanahFundDetailModal(); },
+  printAmanahCurrent: () => printAmanahFundReport(currentAmanahFundId),
+  addKwspTxFiltered: () => openKwspTxModal(kwspLedgerAccountFilter !== 'All' ? parseInt(kwspLedgerAccountFilter) : undefined),
+  addAmanahTxFiltered: () => openAmanahTxModal(amanahLedgerSchemeFilter !== 'All' ? parseInt(amanahLedgerSchemeFilter) : undefined),
+  addReTxFiltered: () => openReTxModal(reCashflowPropertyFilter !== 'All' ? parseInt(reCashflowPropertyFilter) : undefined),
+  addReLoanTxFiltered: () => openReLoanTxModal(reLoanPropertyFilter !== 'All' ? parseInt(reLoanPropertyFilter) : undefined),
+  importDataFile: (el) => importData(el),
+  triggerImportFile: () => document.getElementById('importFile').click(),
+  removeRowRecalc: (el) => { el.closest('tr').remove(); recalcForecastTotals(); },
+  removeMyprow: (el) => { const row = document.getElementById('myprow-' + el.dataset.arg); if (row) row.remove(); },
+  closeAndPrint: (el) => {
+    closePrintOwnerModal();
+    const fn = window[el.dataset.fn];
+    if (typeof fn === 'function') fn(el.dataset.arg);
+  },
+  deleteMember: (el) => deleteMember(Number(el.dataset.arg), el.dataset.arg2),
+  removeFdExistingAttachment: (el) => removeFdExistingAttachment(Number(el.dataset.arg)),
+  removeFdPendingAttachment: (el) => removeFdPendingAttachment(Number(el.dataset.arg)),
+  openFdAttachment: (el) => openFdAttachment(Number(el.dataset.arg), Number(el.dataset.arg2)),
+  toggleCheckedDelayed: (el) => {
+    setTimeout(() => el.classList.toggle('checked', el.querySelector('input').checked), 0);
+  },
+};
+
+function dispatchAction(e) {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const handler = ACTIONS[el.dataset.action];
+  if (!handler) return;
+  if (el.dataset.stop === '1') e.stopPropagation();
+  if (el.dataset.prevent === '1') e.preventDefault();
+  handler(el, e);
+}
+
+document.addEventListener('click', dispatchAction);
+document.addEventListener('change', dispatchAction);
+document.addEventListener('input', dispatchAction);
+
+// Enter-key shortcuts (previously onkeydown="if(event.key==='Enter') ...")
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  const el = e.target.closest('[data-enter-action]');
+  if (!el) return;
+  const action = el.dataset.enterAction;
+  if (action === 'attemptUnlock') attemptUnlock();
+  else if (action === 'confirmImportPasscode') confirmImportPasscode();
+});

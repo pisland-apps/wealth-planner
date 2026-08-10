@@ -14,21 +14,12 @@ Key points (full rationale is in comments right above the tag):
   `'unsafe-inline'` because both inline `<script>` blocks that used to live
   in `index.html` were moved to real files: `js/pdf-worker-init.js` and
   `js/app.js`.
-- `script-src-attr 'unsafe-inline'` — **required**, and this is a real,
-  intentional limitation, not an oversight. This app renders hundreds of
-  `onclick=`/`onchange=`/`oninput=` attributes as part of its normal template
-  strings (~550 occurrences). CSP treats attribute-based handlers separately
-  from `<script>` elements (`script-src-attr` vs `script-src-elem`), so this
-  keeps the weaker rule scoped to attributes only — it does **not** re-open
-  the door for `<script src="evil.com">` or arbitrary inline `<script>`
-  blocks, which are still blocked.
-  - The consequence: if unescaped user data ever reaches `innerHTML` with a
-    payload like `<img src=x onerror="...">`, `script-src-attr` being
-    `'unsafe-inline'` means the browser will still execute it. CSP alone
-    cannot close this — see section 2.
-  - Fully closing it means migrating all inline handler attributes to
-    `addEventListener` (event delegation), which is a much larger refactor
-    than what was asked for here and was not done in this patch.
+- `script-src-attr` — **no longer present in the CSP at all**, which means it
+  falls back to `script-src 'self'`: inline attribute handlers are blocked
+  the same as inline `<script>` blocks. This used to require
+  `'unsafe-inline'` because the app rendered ~330 `onclick=`/`onchange=`/
+  `oninput=`/`onkeydown=` attributes directly in its template strings. See
+  section 6 for how this was closed.
 - `worker-src` is `'self'` only — pdf.js now loads its worker script from
   `./lib/pdf.worker.min.js` (same origin), so no external worker-src origin
   is needed.
@@ -137,6 +128,57 @@ actual UI in a browser in this environment, so this is static
 verification only — worth clicking through each affected screen once
 after you pull this in, to confirm text still renders normally.
 
+## 6. Removing inline event handler attributes (done)
+
+`script-src-attr` no longer needs `'unsafe-inline'` (see section 1). Every
+`onclick=`/`onchange=`/`oninput=`/`onkeydown=` attribute that used to be
+written directly into `index.html` and into the template strings in
+`js/app.js` (~330 occurrences total) has been replaced with:
+
+- a `data-action="functionName"` attribute (plus, where the original call
+  took arguments, `data-arg` / `data-arg2`; and where it started with
+  `event.stopPropagation()` / `event.preventDefault()`, `data-stop="1"` /
+  `data-prevent="1"`), and
+- a single delegated dispatcher at the bottom of `js/app.js` — a
+  `const ACTIONS = { ... }` lookup table mapping each action name to a real
+  function reference, plus one `document.addEventListener('click'/'change'/
+  'input', dispatchAction)` per event type. `dispatchAction` reads
+  `el.dataset.action`/`.arg`/`.arg2` as **plain text** and looks the name up
+  in `ACTIONS` — it never passes that text to `eval()` or `new Function()`.
+
+This is what actually closes the gap described in the old section 1 note:
+previously, an unescaped member/fund/property name containing
+`<img src=x onerror="...">` reaching `innerHTML` would have executed,
+because `script-src-attr 'unsafe-inline'` permitted it. Now there is no
+inline-attribute execution path in the document at all — even in that
+scenario, the browser has nothing to run, and a stray `data-*` attribute
+value is just inert text.
+
+Two things were deliberately left outside this refactor:
+
+- `onclick="window.print()"` inside `finishPrintWindow()` in `js/app.js`.
+  This button lives in a **separate popup document** created via
+  `window.open()` + `document.write()` (used for printed reports), which
+  never receives this app's CSP meta tag and isn't part of the audit above —
+  it also contains no user-controllable logic (just prints the window).
+- The two `onkeydown="if(event.key==='Enter') ..."` handlers (unlock
+  passcode, import passcode) became `data-enter-action="..."` attributes
+  read by a small dedicated `keydown` listener, rather than being folded
+  into the generic `dispatchAction`, since they trigger on a specific key
+  rather than on click/change/input.
+
+Because this touched ~330 call sites across two files, it was done with a
+scripted, pattern-based conversion (grouping call sites by function name and
+argument shape) rather than by hand, with the output re-verified afterward:
+`node --check` on `js/app.js`, a full re-scan confirming zero remaining
+`on(click|change|input|keydown)=` attributes outside the two exceptions
+above, and a cross-check that every `data-action` value used in the markup
+has a matching entry in the `ACTIONS` table (and vice versa). None of that
+replaces actually clicking through the app — please test each screen (add/
+edit/delete flows, filters, the member list, forecast rows, FD attachments,
+the print/report buttons, and the passcode lock screen) before relying on
+this build.
+
 ## Files changed / added
 
 - `index.html` — CSP meta tag now `script-src 'self'` with no CDN origin at
@@ -144,11 +186,18 @@ after you pull this in, to confirm text still renders normally.
   extracted; all three `<script>` tags point at `./lib/`
 - `js/pdf-worker-init.js` — new (was inline); worker path now `./lib/`
 - `js/app.js` — new (was inline); now also contains `escapeHtml()` and
-  ~132 call sites wrapped with it
+  ~149 call sites wrapped with it, plus (this version) the `ACTIONS`
+  dispatch table and `dispatchAction`/delegated-listener code replacing all
+  inline event handler attributes (see section 6)
+- `index.html` — (this version, in addition to the above) every
+  `onclick=`/`onchange=`/`oninput=`/`onkeydown=` attribute replaced with
+  `data-action`/`data-arg`/`data-enter-action` attributes; `script-src-attr`
+  removed from the CSP meta tag
 - `lib/chart.umd.min.js`, `lib/dexie.min.js`, `lib/pdf.min.js`,
   `lib/pdf.worker.min.js` — new; vendored local copies of all third-party
   libraries, replacing the jsdelivr/cdnjs CDN loads
-- `service-worker.js` — cache version bumped (now v7); rewritten so the
+- `service-worker.js` — cache version bumped again (now v9, this version's
+  index.html/app.js changes); previously rewritten so the
   entire app, including the vendored libraries, is one same-origin app
   shell — the separate "best-effort CDN" caching tier was removed since
   there's no CDN left to cache from
