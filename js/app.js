@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v10';
 const APP_VERSION_DATE = '2026-08-10';
 
 (function renderVersionBadge() {
@@ -978,6 +978,28 @@ async function renderDashboard() {
   renderAllocationChart(funds, transactions);
   renderPerformanceChart(funds, transactions);
   renderDashboardHoldings(funds, transactions);
+  await renderDashFdMaturedNotice();
+}
+
+async function renderDashFdMaturedNotice() {
+  const container = document.getElementById('dash-fd-matured-notice');
+  if (!container) return;
+  let deposits = await encGetAll('fixedDeposits');
+  if (dashOwnerFilter !== 'All') {
+    const fid = parseInt(dashOwnerFilter);
+    deposits = deposits.filter(f => (f.ownerIds || []).includes(fid));
+  }
+  const matured = deposits.filter(isFdOverdue).sort((a, b) => new Date(a.maturityDate) - new Date(b.maturityDate));
+  if (matured.length === 0) { container.innerHTML = ''; return; }
+  const items = matured.map(fd => {
+    const days = Math.abs(fdDaysToMaturity(fd));
+    return `<li>${escapeHtml(fd.bankName)} — matured ${escapeHtml(fd.maturityDate)} (${days} day${days !== 1 ? 's' : ''} ago) `
+      + `<button class="icon-btn" title="Process Maturity" data-action="openProcessMaturityModal" data-arg="${fd.id}" style="padding:2px 8px;">📜 Process</button></li>`;
+  }).join('');
+  container.innerHTML = `<div class="stat-card" style="border-left:4px solid #e53e3e;margin-bottom:20px;background:#fff5f5;">
+    <h3 style="color:#e53e3e;">⚠️ ${matured.length} Fixed Deposit${matured.length !== 1 ? 's' : ''} Matured — Action Needed</h3>
+    <ul style="margin:8px 0 0;padding-left:20px;font-size:14px;color:#4a5568;">${items}</ul>
+  </div>`;
 }
 
 function renderCurrencyGroups(activeFunds, transactions) {
@@ -4120,10 +4142,18 @@ function openReportWindow(title, extraStyle) {
 }
 
 function finishPrintWindow(printWindow) {
-  printWindow.document.write('<div class="no-print" style="position:fixed;top:16px;right:16px;z-index:999;"><button onclick="window.print()" style="background:#667eea;color:white;border:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">🖨️ Print</button></div>');
+  // NOTE: this popup's CSP is inherited from the main app document (browsers
+  // apply "local scheme inheritance" to about:blank windows opened via
+  // window.open()), so — like the rest of the app since the v9 refactor —
+  // it can't use an inline onclick="..." attribute here either. The button
+  // is wired up with a real addEventListener call below instead, which
+  // isn't restricted by script-src-attr.
+  printWindow.document.write('<div class="no-print" style="position:fixed;top:16px;right:16px;z-index:999;"><button id="printReportBtn" style="background:#667eea;color:white;border:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">🖨️ Print</button></div>');
   printWindow.document.write('<style>@media print { .no-print { display: none !important; } }</style>');
   printWindow.document.write('</body></html>');
   printWindow.document.close();
+  const btn = printWindow.document.getElementById('printReportBtn');
+  if (btn) btn.addEventListener('click', () => printWindow.print());
 }
 
 // ==================== PRINT ====================
@@ -7534,9 +7564,29 @@ function dispatchAction(e) {
   handler(el, e);
 }
 
+// Actions that were originally wired to oninput= (fire on every keystroke,
+// for live recalculation as you type). Everything else that carries
+// data-action was originally onclick=/onchange= only, which fire on click
+// or on blur/Enter/selection-change — NOT on every keystroke. Without this
+// whitelist, a plain 'input' listener would re-invoke e.g. mypSaveActualResult
+// on every keystroke; that function saves to IndexedDB and re-renders the
+// whole table, which replaces the <input> DOM node mid-type and makes it
+// impossible to type more than one character into it.
+const INPUT_LIVE_ACTIONS = new Set([
+  'autoCalcTx', 'calcAmanahTxAmount', 'calcFdMaturityFromTenure',
+  'fxCalcTxRate', 'fxCalcTxTotal', 'onPmInterestChange',
+  'recalcForecastTotals', 'recalculateRePurchaseTotal',
+]);
+
+function dispatchInputAction(e) {
+  const el = e.target.closest('[data-action]');
+  if (!el || !INPUT_LIVE_ACTIONS.has(el.dataset.action)) return;
+  dispatchAction(e);
+}
+
 document.addEventListener('click', dispatchAction);
 document.addEventListener('change', dispatchAction);
-document.addEventListener('input', dispatchAction);
+document.addEventListener('input', dispatchInputAction);
 
 // Enter-key shortcuts (previously onkeydown="if(event.key==='Enter') ...")
 document.addEventListener('keydown', function(e) {
