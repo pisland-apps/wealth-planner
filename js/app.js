@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
@@ -383,6 +383,16 @@ async function openEncryptionModal() {
 }
 function closeEncryptionModal() {
   document.getElementById('encryptionModal').classList.remove('active');
+  // Clear passcode fields on every close path (cancel AND after a successful
+  // submit) — not just on open. Leaving a typed passcode sitting in a
+  // type="password" input anywhere in the DOM is what makes Chrome's save-
+  // password heuristic misfire later: it can pair that leftover (still
+  // non-empty) password field with the next unrelated text/number field the
+  // user edits and types into (e.g. the Multi-Year Planner's "Actual (EOY)"
+  // box), and prompt to save that combination as a login.
+  document.getElementById('encPasscode1').value = '';
+  document.getElementById('encPasscode2').value = '';
+  document.getElementById('encDisablePasscode').value = '';
 }
 
 async function submitEnableEncryption() {
@@ -478,6 +488,7 @@ async function attemptUnlock() {
     const decoded = await decryptValue(key, canary);
     if (decoded !== ENC_CANARY_PLAINTEXT) throw new Error('wrong passcode');
     encryptionKey = key;
+    document.getElementById('unlockPasscode').value = '';
     hideUnlockOverlay();
     await initApp();
   } catch (e) {
@@ -1022,7 +1033,12 @@ async function renderFdMaturedNoticeInto(containerId, ownerFilterValue) {
 }
 
 async function renderDashFdMaturedNotice() {
-  await renderFdMaturedNoticeInto('dash-fd-matured-notice', dashOwnerFilter);
+  // The "Matured FD" notice has been removed from the Unit Trust module's
+  // Portfolio Dashboard per user request. It still appears on the top-level
+  // "My Wealth" dashboard (see renderFdMaturedNoticeInto('wealth-fd-matured-notice', ...)
+  // below), which is unaffected since it doesn't call this function.
+  const container = document.getElementById('dash-fd-matured-notice');
+  if (container) container.innerHTML = '';
 }
 
 
@@ -2150,7 +2166,14 @@ function openExportModal() {
   onExportEncryptToggleChange();
   document.getElementById('exportModal').classList.add('active');
 }
-function closeExportModal() { document.getElementById('exportModal').classList.remove('active'); }
+function closeExportModal() {
+  document.getElementById('exportModal').classList.remove('active');
+  // Same reasoning as closeEncryptionModal: clear on every close, not just
+  // on open, so a leftover passcode never lingers in the DOM for Chrome's
+  // password-save heuristic to pick up later.
+  document.getElementById('exportPasscode1').value = '';
+  document.getElementById('exportPasscode2').value = '';
+}
 
 function onExportEncryptToggleChange() {
   const encrypt = document.getElementById('exportEncryptToggle').checked;
@@ -2249,6 +2272,8 @@ async function importData(input) {
 function closeImportPasscodeModal() {
   document.getElementById('importPasscodeModal').classList.remove('active');
   pendingImportEncryptedData = null;
+  // Same reasoning as closeEncryptionModal/closeExportModal.
+  document.getElementById('importBackupPasscode').value = '';
 }
 
 async function confirmImportPasscode() {
@@ -2264,6 +2289,7 @@ async function confirmImportPasscode() {
     const data = await decryptValue(key, pendingImportEncryptedData.payload);
     document.getElementById('importPasscodeModal').classList.remove('active');
     pendingImportEncryptedData = null;
+    document.getElementById('importBackupPasscode').value = '';
     await applyImportedData(data);
   } catch (e) {
     status.textContent = '❌ Incorrect passcode.';

@@ -1865,8 +1865,8 @@
         Encrypt your fund names, amounts, dates, and notes at rest using AES-GCM. Your passcode is never stored anywhere — it only exists in this browser tab's memory while unlocked.
         <strong style="color:#e53e3e;">If you forget it, there is no recovery — your data becomes permanently unreadable.</strong>
       </p>
-      <div class="form-group"><label>Set a Passcode</label><input type="password" id="encPasscode1" autocomplete="new-password" placeholder="At least 6 characters"></div>
-      <div class="form-group"><label>Confirm Passcode</label><input type="password" id="encPasscode2" autocomplete="new-password" placeholder="Re-enter passcode"></div>
+      <div class="form-group"><label>Set a Passcode</label><input type="password" id="encPasscode1" autocomplete="off" placeholder="At least 6 characters"></div>
+      <div class="form-group"><label>Confirm Passcode</label><input type="password" id="encPasscode2" autocomplete="off" placeholder="Re-enter passcode"></div>
       <div id="encModalStatus" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
       <div class="modal-actions">
         <button class="btn btn-secondary" data-action="closeEncryptionModal">Cancel</button>
@@ -1876,7 +1876,7 @@
     <div id="encryptionModalOn" class="hidden">
       <p style="color:#718096;font-size:13px;margin-bottom:15px;">Encryption is currently <strong style="color:#48bb78;">ON</strong>. Your data is encrypted at rest — you'll be asked for your passcode each time you open this file.</p>
       <p style="color:#718096;font-size:13px;margin-bottom:15px;">To turn encryption off and store your data as plaintext again, confirm your current passcode:</p>
-      <div class="form-group"><label>Current Passcode</label><input type="password" id="encDisablePasscode" autocomplete="new-password" placeholder="Enter your passcode"></div>
+      <div class="form-group"><label>Current Passcode</label><input type="password" id="encDisablePasscode" autocomplete="off" placeholder="Enter your passcode"></div>
       <div id="encModalStatus2" style="font-size:13px;margin-bottom:10px;min-height:18px;"></div>
       <div class="modal-actions">
         <button class="btn btn-secondary" data-action="closeEncryptionModal">Cancel</button>
@@ -1892,7 +1892,7 @@
     <div style="font-size:40px;margin-bottom:10px;">🔒</div>
     <h2>Enter Passcode to Unlock</h2>
     <p style="color:#718096;font-size:13px;margin-bottom:20px;">Your data is encrypted. Enter your passcode to continue.</p>
-    <input type="password" id="unlockPasscode" autocomplete="new-password" placeholder="Passcode" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;" data-enter-action="attemptUnlock">
+    <input type="password" id="unlockPasscode" autocomplete="off" placeholder="Passcode" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;" data-enter-action="attemptUnlock">
     <div id="unlockStatus" style="font-size:13px;margin-bottom:15px;min-height:18px;color:#e53e3e;"></div>
     <button class="btn btn-primary" data-action="attemptUnlock" style="width:100%;justify-content:center;">Unlock</button>
   </div>
@@ -1910,8 +1910,8 @@
       </label>
     </div>
     <div id="exportPasscodeFields">
-      <div class="form-group"><label>Backup Passcode</label><input type="password" id="exportPasscode1" autocomplete="new-password" placeholder="At least 6 characters"></div>
-      <div class="form-group"><label>Confirm Passcode</label><input type="password" id="exportPasscode2" autocomplete="new-password" placeholder="Re-enter passcode"></div>
+      <div class="form-group"><label>Backup Passcode</label><input type="password" id="exportPasscode1" autocomplete="off" placeholder="At least 6 characters"></div>
+      <div class="form-group"><label>Confirm Passcode</label><input type="password" id="exportPasscode2" autocomplete="off" placeholder="Re-enter passcode"></div>
       <p style="color:#718096;font-size:12px;margin-top:-10px;">This protects this specific backup file — it can be different from your app unlock passcode. You'll need to enter it again when importing this file.</p>
     </div>
     <div id="exportWarningNote" class="hidden" style="color:#dd6b20;font-size:13px;margin:0 0 15px;padding:10px;background:#fffaf0;border-radius:8px;">⚠️ 明文备份不含密码保护，请妥善保管<br><span style="color:#a0725c;font-size:12px;">(This plaintext backup has no password protection — keep the file somewhere secure.)</span></div>
@@ -1928,7 +1928,7 @@
   <div class="modal">
     <h2>🔒 Encrypted Backup</h2>
     <p style="color:#718096;font-size:13px;margin-bottom:15px;">This backup file is encrypted. Enter the passcode that was used when it was exported.</p>
-    <div class="form-group"><label>Backup Passcode</label><input type="password" id="importBackupPasscode" autocomplete="new-password" placeholder="Enter passcode" data-enter-action="confirmImportPasscode"></div>
+    <div class="form-group"><label>Backup Passcode</label><input type="password" id="importBackupPasscode" autocomplete="off" placeholder="Enter passcode" data-enter-action="confirmImportPasscode"></div>
     <div id="importPasscodeStatus" style="font-size:13px;margin-bottom:10px;min-height:18px;color:#e53e3e;"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" data-action="closeImportPasscodeModal">Cancel</button>
