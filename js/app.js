@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
@@ -2794,8 +2794,8 @@ let amanahLedgerSchemeFilter = 'All';
 
 function amanahSchemeOptionLabel(fund, membersById) {
   const names = (fund.ownerIds || []).map(id => membersById[id] ? membersById[id].name : null).filter(Boolean);
-  const ownerPart = names.length > 0 ? ' — ' + names.join(' & ') : '';
-  return fund.name + (fund.code ? ' (' + fund.code + ')' : '') + ownerPart;
+  const ownerPart = names.length > 0 ? ' — ' + escapeHtml(names.join(' & ')) : '';
+  return escapeHtml(fund.name) + (fund.code ? ' (' + escapeHtml(fund.code) + ')' : '') + ownerPart;
 }
 
 async function renderAmanahLedgerSchemeFilterOptions() {
@@ -3068,8 +3068,8 @@ function calcKwspMetrics(account, transactions) {
 
 function kwspAccountOptionLabel(account, membersById) {
   const names = (account.ownerIds || []).map(id => membersById[id] ? membersById[id].name : null).filter(Boolean);
-  const ownerPart = names.length > 0 ? ' — ' + names.join(' & ') : '';
-  return account.name + ownerPart;
+  const ownerPart = names.length > 0 ? ' — ' + escapeHtml(names.join(' & ')) : '';
+  return escapeHtml(account.name) + ownerPart;
 }
 
 async function renderKwspAll() {
