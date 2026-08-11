@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
@@ -868,9 +868,16 @@ function getExchangeRates() {
 function setExchangeRates(rates) {
   try { localStorage.setItem('utt-exchange-rates', JSON.stringify(rates)); } catch (e) { /* private browsing - ignore */ }
 }
+// SECURITY: `code` can originate from imported backup JSON (fund.currency, account.currency,
+// fd.currency, tx.currency etc.), which is never schema-validated on import (see
+// applyImportedData). For any code NOT in our known CURRENCY_SYMBOLS map, this used to return
+// the raw uppercased string, which callers then interpolate straight into innerHTML via
+// formatCurrency() — a crafted backup could set currency to e.g. '<img src=x onerror=...>' and
+// get it rendered as markup on every fund/account card. escapeHtml() the fallback so an unknown
+// "currency" can never carry HTML into the DOM, regardless of who added the field or where it's used.
 function currencySymbol(code) {
   const c = (code || getBaseCurrency() || 'USD').toUpperCase();
-  return CURRENCY_SYMBOLS[c] || (c + ' ');
+  return CURRENCY_SYMBOLS[c] || (escapeHtml(c) + ' ');
 }
 // Rate = how many units of the base currency equal 1 unit of `currency`
 function getRate(currency) {
@@ -973,8 +980,12 @@ function getTxTypeColor(type) {
 
 // The Add Transaction dropdown labels the 'Dividend' type as "Dividend (Cash)" to distinguish
 // it from "Dividend (Reinvest)" — this makes every other display of that type consistent with it.
+// SECURITY: `type` can come from imported backup JSON (amanahTransactions[].type), which isn't
+// schema-validated on import. Callers interpolate this return value straight into innerHTML
+// without their own escapeHtml() wrap (they assumed it was always one of the fixed dropdown
+// values), so escape here at the source instead of relying on every call site to remember.
 function amanahTxTypeLabel(type) {
-  return type === 'Dividend' ? 'Dividend (Cash)' : type;
+  return type === 'Dividend' ? 'Dividend (Cash)' : escapeHtml(type);
 }
 
 // Calculate fund metrics
@@ -1578,7 +1589,7 @@ async function renderClosedFunds() {
           <div class="fund-header">
             <div>
               <div class="fund-name">${escapeHtml(d.fund.name)}</div>
-              <div style="font-size: 12px; color: #718096; margin-top: 4px;">${[d.fund.code, d.fund.category].filter(Boolean).join(' | ')}</div>
+              <div style="font-size: 12px; color: #718096; margin-top: 4px;">${[d.fund.code, d.fund.category].filter(Boolean).map(escapeHtml).join(' | ')}</div>
               <div style="margin-top: 6px;">${ownerBadgeHtml(d.fund.ownerIds, membersById)}</div>
             </div>
           </div>
@@ -1776,7 +1787,7 @@ async function openCurrencyModal() {
   // Base currency dropdown: fund currencies plus the current base (in case it's not used by any fund yet) plus common defaults
   const options = Array.from(new Set([...currencies, base, 'USD', 'MYR', 'SGD', 'EUR', 'GBP'])).sort();
   const baseSelect = document.getElementById('baseCurrencySelect');
-  baseSelect.innerHTML = options.map(c => `<option value="${c}" ${c === base ? 'selected' : ''}>${c}</option>`).join('');
+  baseSelect.innerHTML = options.map(c => `<option value="${escapeHtml(c)}" ${c === base ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
   baseSelect.onchange = renderExchangeRatesInputs;
   renderExchangeRatesInputs();
   document.getElementById('currencyModal').classList.add('active');
@@ -1794,8 +1805,8 @@ async function renderExchangeRatesInputs() {
   }
   list.innerHTML = others.map(c => `
     <div class="form-group">
-      <label>1 ${c} = ? ${base}</label>
-      <input type="number" step="0.0001" min="0" id="rate-${c}" value="${rates[c] || ''}" placeholder="e.g. 4.7000">
+      <label>1 ${escapeHtml(c)} = ? ${escapeHtml(base)}</label>
+      <input type="number" step="0.0001" min="0" id="rate-${encodeURIComponent(c)}" value="${escapeHtml(String(rates[c] || ''))}" placeholder="e.g. 4.7000">
     </div>
   `).join('');
 }
@@ -1931,7 +1942,7 @@ async function fetchLiveRates() {
       // API gives "1 base = X units of c"; our rate convention is "1 c = ? base", so invert
       const rate = data.rates[c];
       if (rate && rate > 0) {
-        const input = document.getElementById('rate-' + c);
+        const input = document.getElementById('rate-' + encodeURIComponent(c));
         if (input) { input.value = (1 / rate).toFixed(4); filled++; }
       }
     });
@@ -1950,7 +1961,7 @@ async function saveCurrencySettings() {
   const others = currencies.filter(c => c !== base);
   const rates = getExchangeRates();
   others.forEach(c => {
-    const input = document.getElementById('rate-' + c);
+    const input = document.getElementById('rate-' + encodeURIComponent(c));
     if (input) {
       const v = parseFloat(input.value);
       if (!isNaN(v) && v > 0) rates[c] = v; else delete rates[c];
@@ -2363,38 +2374,137 @@ async function confirmImportPasscode() {
   }
 }
 
+// ==================== IMPORT SANITIZATION ====================
+// SECURITY: a backup file is untrusted input the moment it might have passed through
+// someone else's hands (shared, emailed, pulled from a synced folder, etc.) — Import
+// used to write it straight into IndexedDB with no validation at all. Several fields
+// throughout the app are only ever *populated* from a fixed <select> dropdown, so the
+// renderer assumes they're one of a handful of safe values and, in a few places found
+// during a security review (see FIXES-v15.md), skipped escaping them. Those specific
+// spots are now escaped too, but relying on every present-and-future render call site
+// to remember that is fragile. This validates the "closed set" fields at the one place
+// all imported data funnels through, so a value that was never reachable via the UI —
+// e.g. HTML markup smuggled into a `currency` or `type` field — can't survive an import
+// at all, regardless of what any given render function does or doesn't escape.
+//
+// This intentionally does NOT touch free-text fields (name, notes, particular, etc.) —
+// those are meant to hold arbitrary user text and are already escapeHtml()'d at every
+// render site; validating "shape" for those would just mean re-inventing HTML escaping
+// badly. This is specifically for fields that are enums in every part of the UI that
+// writes them, so any value outside that enum is a sign of a tampered/hand-crafted file
+// rather than of legitimate user data we'd risk corrupting by normalizing.
+
+const IMPORT_KNOWN_CURRENCIES = Object.keys(CURRENCY_SYMBOLS);
+
+function importSanitizeCurrency(value, fallback) {
+  const c = String(value == null ? '' : value).toUpperCase().trim();
+  return IMPORT_KNOWN_CURRENCIES.includes(c) ? c : (fallback || getBaseCurrency());
+}
+
+function importSanitizeEnum(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
+}
+
+// Per-collection rules: each entry is [fieldName, sanitizerFn]. Applied to every record
+// in that collection before it's written. Unlisted collections/fields pass through
+// unchanged (this is deliberately scoped to the known-vulnerable "enum" fields, not a
+// general-purpose schema validator).
+const IMPORT_FIELD_RULES = {
+  funds: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+    ['category', r => importSanitizeEnum(r.category, ['Equity', 'Bond', 'Balanced', 'Money Market', 'Other'], 'Other')],
+  ],
+  transactions: [
+    ['type', r => importSanitizeEnum(r.type, ['Buy', 'Sell', 'Dividend', 'Dividend (Reinvest)', 'Dividend Cheque', 'Contribution', 'Bonus Units', 'Annual Fee'], 'Buy')],
+  ],
+  amanahFunds: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+  ],
+  amanahTransactions: [
+    ['type', r => importSanitizeEnum(r.type, ['Buy', 'Sell', 'Dividend', 'Dividend (Reinvest)', 'Bonus Units', 'Annual Fee'], 'Buy')],
+  ],
+  kwspAccounts: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+  ],
+  kwspTransactions: [
+    ['type', r => importSanitizeEnum(r.type, ['Contribution (Employee)', 'Contribution (Employer)', 'Dividend', 'Withdrawal'], 'Contribution (Employee)')],
+  ],
+  fixedDeposits: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+    ['status', r => importSanitizeEnum(r.status, ['Active', 'Renewed', 'Closed'], 'Active')],
+  ],
+  fdMaturityRecords: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+    ['action', r => importSanitizeEnum(r.action, ['Renewed', 'Withdrawn'], 'Withdrawn')],
+  ],
+  fdInterestPayouts: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+  ],
+  realEstateProperties: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+    ['type', r => importSanitizeEnum(r.type, ['Residential', 'Commercial', 'Land', 'Industrial'], 'Residential')],
+    ['status', r => importSanitizeEnum(r.status, ['Rented', 'Vacant', 'Own Occupied'], 'Vacant')],
+  ],
+  realEstateTx: [
+    ['type', r => importSanitizeEnum(r.type, ['INCOME', 'EXPENSE'], 'EXPENSE')],
+  ],
+  realEstateLoanTx: [
+    ['action', r => importSanitizeEnum(r.action, ['REPAYMENT', 'BANK_CHARGES', 'INITIAL_LOAN', 'REDRAW_WITHDRAW', 'REDRAW_DEPOSIT'], 'REPAYMENT')],
+  ],
+  fxTransactions: [
+    ['currency', r => importSanitizeCurrency(r.currency)],
+    ['type', r => importSanitizeEnum(r.type, ['Buy', 'Sell', 'Gift'], 'Buy')],
+  ],
+  mypFunds: [
+    ['type', r => importSanitizeEnum(r.type, ['unittrust', 'amanah', 'kwsp', 'fd'], 'unittrust')],
+  ],
+};
+
+// Mutates `records` in place, clamping each rule's field to a known-safe value.
+function importSanitizeCollection(collectionName, records) {
+  const rules = IMPORT_FIELD_RULES[collectionName];
+  if (!rules || !Array.isArray(records)) return records;
+  records.forEach(r => {
+    if (!r || typeof r !== 'object') return;
+    rules.forEach(([field, sanitizer]) => {
+      if (Object.prototype.hasOwnProperty.call(r, field)) r[field] = sanitizer(r);
+    });
+  });
+  return records;
+}
+
 async function applyImportedData(data) {
   try {
     // Imported JSON is always plaintext-shaped by this point (decrypted already, if it was encrypted).
     // If app-level encryption is currently active, encBulkAdd re-encrypts each record on the way in.
-    if (data.funds) { await db.funds.clear(); await encBulkAdd('funds', data.funds); }
-    if (data.transactions) { await db.transactions.clear(); await encBulkAdd('transactions', data.transactions); }
-    if (data.navHistory) { await db.navHistory.clear(); await encBulkAdd('navHistory', data.navHistory); }
-    if (data.members) { await db.members.clear(); await encBulkAdd('members', data.members); }
-    if (data.amanahFunds) { await db.amanahFunds.clear(); await encBulkAdd('amanahFunds', data.amanahFunds); }
-    if (data.amanahTransactions) { await db.amanahTransactions.clear(); await encBulkAdd('amanahTransactions', data.amanahTransactions); }
-    if (data.kwspAccounts) { await db.kwspAccounts.clear(); await encBulkAdd('kwspAccounts', data.kwspAccounts); }
-    if (data.kwspTransactions) { await db.kwspTransactions.clear(); await encBulkAdd('kwspTransactions', data.kwspTransactions); }
-    if (data.fixedDeposits) { await db.fixedDeposits.clear(); await encBulkAdd('fixedDeposits', data.fixedDeposits); }
-    if (data.fdMaturityRecords) { await db.fdMaturityRecords.clear(); await encBulkAdd('fdMaturityRecords', data.fdMaturityRecords); }
-    if (data.fdInterestPayouts) { await db.fdInterestPayouts.clear(); await encBulkAdd('fdInterestPayouts', data.fdInterestPayouts); }
-    if (data.realEstateProperties) { await db.realEstateProperties.clear(); await encBulkAdd('realEstateProperties', data.realEstateProperties); }
-    if (data.realEstateTx) { await db.realEstateTx.clear(); await encBulkAdd('realEstateTx', data.realEstateTx); }
-    if (data.realEstateLoanTx) { await db.realEstateLoanTx.clear(); await encBulkAdd('realEstateLoanTx', data.realEstateLoanTx); }
-    if (data.fxTransactions) { await db.fxTransactions.clear(); await encBulkAdd('fxTransactions', data.fxTransactions); }
-    if (data.wealthSnapshots) { await db.wealthSnapshots.clear(); await encBulkAdd('wealthSnapshots', data.wealthSnapshots); }
-    if (data.incomeForecasts) { await db.incomeForecasts.clear(); await encBulkAdd('incomeForecasts', data.incomeForecasts); }
-    if (data.mypFunds) { await db.mypFunds.clear(); await encBulkAdd('mypFunds', data.mypFunds); }
-    if (data.mypFundRules) { await db.mypFundRules.clear(); await encBulkAdd('mypFundRules', data.mypFundRules); }
-    if (data.mypPlans) { await db.mypPlans.clear(); await encBulkAdd('mypPlans', data.mypPlans); }
-    if (data.mypIncomeCategories) { await db.mypIncomeCategories.clear(); await encBulkAdd('mypIncomeCategories', data.mypIncomeCategories); }
-    if (data.mypIncomeRanges) { await db.mypIncomeRanges.clear(); await encBulkAdd('mypIncomeRanges', data.mypIncomeRanges); }
-    if (data.mypExpenseCategories) { await db.mypExpenseCategories.clear(); await encBulkAdd('mypExpenseCategories', data.mypExpenseCategories); }
-    if (data.mypExpenseRanges) { await db.mypExpenseRanges.clear(); await encBulkAdd('mypExpenseRanges', data.mypExpenseRanges); }
-    if (data.mypBaselines) { await db.mypBaselines.clear(); await encBulkAdd('mypBaselines', data.mypBaselines); }
-    if (data.mypBaselineValues) { await db.mypBaselineValues.clear(); await encBulkAdd('mypBaselineValues', data.mypBaselineValues); }
-    if (data.mypActuals) { await db.mypActuals.clear(); await encBulkAdd('mypActuals', data.mypActuals); }
-    if (data.mypSavedForecasts) { await db.mypSavedForecasts.clear(); await encBulkAdd('mypSavedForecasts', data.mypSavedForecasts); }
+    if (data.funds) { importSanitizeCollection('funds', data.funds); await db.funds.clear(); await encBulkAdd('funds', data.funds); }
+    if (data.transactions) { importSanitizeCollection('transactions', data.transactions); await db.transactions.clear(); await encBulkAdd('transactions', data.transactions); }
+    if (data.navHistory) { importSanitizeCollection('navHistory', data.navHistory); await db.navHistory.clear(); await encBulkAdd('navHistory', data.navHistory); }
+    if (data.members) { importSanitizeCollection('members', data.members); await db.members.clear(); await encBulkAdd('members', data.members); }
+    if (data.amanahFunds) { importSanitizeCollection('amanahFunds', data.amanahFunds); await db.amanahFunds.clear(); await encBulkAdd('amanahFunds', data.amanahFunds); }
+    if (data.amanahTransactions) { importSanitizeCollection('amanahTransactions', data.amanahTransactions); await db.amanahTransactions.clear(); await encBulkAdd('amanahTransactions', data.amanahTransactions); }
+    if (data.kwspAccounts) { importSanitizeCollection('kwspAccounts', data.kwspAccounts); await db.kwspAccounts.clear(); await encBulkAdd('kwspAccounts', data.kwspAccounts); }
+    if (data.kwspTransactions) { importSanitizeCollection('kwspTransactions', data.kwspTransactions); await db.kwspTransactions.clear(); await encBulkAdd('kwspTransactions', data.kwspTransactions); }
+    if (data.fixedDeposits) { importSanitizeCollection('fixedDeposits', data.fixedDeposits); await db.fixedDeposits.clear(); await encBulkAdd('fixedDeposits', data.fixedDeposits); }
+    if (data.fdMaturityRecords) { importSanitizeCollection('fdMaturityRecords', data.fdMaturityRecords); await db.fdMaturityRecords.clear(); await encBulkAdd('fdMaturityRecords', data.fdMaturityRecords); }
+    if (data.fdInterestPayouts) { importSanitizeCollection('fdInterestPayouts', data.fdInterestPayouts); await db.fdInterestPayouts.clear(); await encBulkAdd('fdInterestPayouts', data.fdInterestPayouts); }
+    if (data.realEstateProperties) { importSanitizeCollection('realEstateProperties', data.realEstateProperties); await db.realEstateProperties.clear(); await encBulkAdd('realEstateProperties', data.realEstateProperties); }
+    if (data.realEstateTx) { importSanitizeCollection('realEstateTx', data.realEstateTx); await db.realEstateTx.clear(); await encBulkAdd('realEstateTx', data.realEstateTx); }
+    if (data.realEstateLoanTx) { importSanitizeCollection('realEstateLoanTx', data.realEstateLoanTx); await db.realEstateLoanTx.clear(); await encBulkAdd('realEstateLoanTx', data.realEstateLoanTx); }
+    if (data.fxTransactions) { importSanitizeCollection('fxTransactions', data.fxTransactions); await db.fxTransactions.clear(); await encBulkAdd('fxTransactions', data.fxTransactions); }
+    if (data.wealthSnapshots) { importSanitizeCollection('wealthSnapshots', data.wealthSnapshots); await db.wealthSnapshots.clear(); await encBulkAdd('wealthSnapshots', data.wealthSnapshots); }
+    if (data.incomeForecasts) { importSanitizeCollection('incomeForecasts', data.incomeForecasts); await db.incomeForecasts.clear(); await encBulkAdd('incomeForecasts', data.incomeForecasts); }
+    if (data.mypFunds) { importSanitizeCollection('mypFunds', data.mypFunds); await db.mypFunds.clear(); await encBulkAdd('mypFunds', data.mypFunds); }
+    if (data.mypFundRules) { importSanitizeCollection('mypFundRules', data.mypFundRules); await db.mypFundRules.clear(); await encBulkAdd('mypFundRules', data.mypFundRules); }
+    if (data.mypPlans) { importSanitizeCollection('mypPlans', data.mypPlans); await db.mypPlans.clear(); await encBulkAdd('mypPlans', data.mypPlans); }
+    if (data.mypIncomeCategories) { importSanitizeCollection('mypIncomeCategories', data.mypIncomeCategories); await db.mypIncomeCategories.clear(); await encBulkAdd('mypIncomeCategories', data.mypIncomeCategories); }
+    if (data.mypIncomeRanges) { importSanitizeCollection('mypIncomeRanges', data.mypIncomeRanges); await db.mypIncomeRanges.clear(); await encBulkAdd('mypIncomeRanges', data.mypIncomeRanges); }
+    if (data.mypExpenseCategories) { importSanitizeCollection('mypExpenseCategories', data.mypExpenseCategories); await db.mypExpenseCategories.clear(); await encBulkAdd('mypExpenseCategories', data.mypExpenseCategories); }
+    if (data.mypExpenseRanges) { importSanitizeCollection('mypExpenseRanges', data.mypExpenseRanges); await db.mypExpenseRanges.clear(); await encBulkAdd('mypExpenseRanges', data.mypExpenseRanges); }
+    if (data.mypBaselines) { importSanitizeCollection('mypBaselines', data.mypBaselines); await db.mypBaselines.clear(); await encBulkAdd('mypBaselines', data.mypBaselines); }
+    if (data.mypBaselineValues) { importSanitizeCollection('mypBaselineValues', data.mypBaselineValues); await db.mypBaselineValues.clear(); await encBulkAdd('mypBaselineValues', data.mypBaselineValues); }
+    if (data.mypActuals) { importSanitizeCollection('mypActuals', data.mypActuals); await db.mypActuals.clear(); await encBulkAdd('mypActuals', data.mypActuals); }
+    if (data.mypSavedForecasts) { importSanitizeCollection('mypSavedForecasts', data.mypSavedForecasts); await db.mypSavedForecasts.clear(); await encBulkAdd('mypSavedForecasts', data.mypSavedForecasts); }
     try { localStorage.setItem('utt-last-export', new Date().toISOString()); } catch (e) { /* private browsing - ignore */ }
     showToast('Data imported successfully!');
     await renderDashboard();
@@ -2563,7 +2673,7 @@ async function renderAmanahFunds() {
       <div class="fund-header">
         <div>
           <div class="fund-name"><a href="#" data-action="showAmanahFundDetail" data-prevent="1" data-arg="${fund.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fund.name)}</a>${!active ? ' <span style="font-size:11px;font-weight:500;color:#a0aec0;">(Redeemed)</span>' : ''}</div>
-          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${[fund.code, fund.currency].filter(Boolean).join(' | ')}</div>
+          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${[fund.code, fund.currency].filter(Boolean).map(escapeHtml).join(' | ')}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(fund.ownerIds, membersById)}</div>
         </div>
       </div>
@@ -3279,7 +3389,7 @@ async function renderKwspLedger() {
     const account = accountsById[tx.kwspAccountId];
     return `<tr>
       <td>${escapeHtml(tx.date)}</td>
-      <td>${account ? account.name : 'Unknown'}</td>
+      <td>${account ? escapeHtml(account.name) : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
       <td>${formatCurrency(tx.amount, account && account.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -5473,17 +5583,17 @@ async function renderFxAll() {
     card.onclick = () => openFxCurrencyDetail(code);
     card.innerHTML = `
       <div class="fx-head">
-        <div class="fx-title">${currencyFlag(code)} ${code}</div>
-        <button class="icon-btn" title="Add transaction" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${code}">➕</button>
+        <div class="fx-title">${currencyFlag(code)} ${escapeHtml(code)}</div>
+        <button class="icon-btn" title="Add transaction" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${escapeHtml(code)}">➕</button>
       </div>
-      <div style="font-size:16px;font-weight:bold;color:#1a202c;">${h.amount.toLocaleString()} <span style="font-size:11px;font-weight:normal;color:#718096;">${code}</span></div>
+      <div style="font-size:16px;font-weight:bold;color:#1a202c;">${h.amount.toLocaleString()} <span style="font-size:11px;font-weight:normal;color:#718096;">${escapeHtml(code)}</span></div>
       <div class="fx-details">
         <div class="fx-detail-item"><div class="fx-label">Current Value</div><div class="fx-val">${formatCurrency(h.currentValue, base)}</div></div>
         <div class="fx-detail-item"><div class="fx-label">Total Cost</div><div class="fx-val">${formatCurrency(h.totalCost, base)}</div></div>
         <div class="fx-detail-item"><div class="fx-label">Avg Buy Rate</div><div class="fx-val">${h.avgRate.toFixed(4)}</div></div>
         <div class="fx-detail-item"><div class="fx-label">Market Rate</div><div class="fx-val">${h.rateSet ? h.marketRate.toFixed(4) : '—'}</div></div>
       </div>
-      ${!h.rateSet ? `<div class="fx-rate-warning">⚠️ No rate set for ${code} — value shown as 0. Open Currency Settings.</div>` : `
+      ${!h.rateSet ? `<div class="fx-rate-warning">⚠️ No rate set for ${escapeHtml(code)} — value shown as 0. Open Currency Settings.</div>` : `
       <div style="font-size:11px;display:flex;justify-content:space-between;border-top:1px solid #edf2f7;padding-top:4px;">
         <span style="color:#718096;">Unrealised P&amp;L:</span>
         <strong style="color:${h.pl >= 0 ? '#48bb78' : '#f56565'};">${h.pl >= 0 ? '+' : ''}${formatCurrency(h.pl, base)} (${h.plPct.toFixed(2)}%)</strong>
@@ -5495,15 +5605,15 @@ async function renderFxAll() {
     tr.style.cursor = 'pointer';
     tr.onclick = () => openFxCurrencyDetail(code);
     tr.innerHTML = `
-      <td><strong>${currencyFlag(code)} ${code}</strong></td>
-      <td>${h.amount.toLocaleString()} ${code}</td>
+      <td><strong>${currencyFlag(code)} ${escapeHtml(code)}</strong></td>
+      <td>${h.amount.toLocaleString()} ${escapeHtml(code)}</td>
       <td>${formatCurrency(h.currentValue, base)}</td>
       <td>${formatCurrency(h.totalCost, base)}</td>
       <td>${h.avgRate.toFixed(4)}</td>
       <td>${h.rateSet ? h.marketRate.toFixed(4) : '⚠️ not set'}</td>
       <td style="color:${h.pl >= 0 ? '#48bb78' : '#f56565'};font-weight:bold;">${h.pl >= 0 ? '+' : ''}${formatCurrency(h.pl, base)}</td>
       <td style="color:${h.pl >= 0 ? '#48bb78' : '#f56565'};font-weight:bold;">${h.plPct.toFixed(2)}%</td>
-      <td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${code}">+ Tx</button></td>
+      <td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" data-action="openFxTxModal" data-stop="1" data-arg="Buy" data-arg2="${escapeHtml(code)}">+ Tx</button></td>
     `;
     tableBody.appendChild(tr);
   });
@@ -6319,7 +6429,7 @@ async function populateForecastPropertyOptions(rowId) {
   const select = tr.querySelector('.fp-property');
   select.innerHTML = filtered.length === 0
     ? '<option value="">No rented properties in scope</option>'
-    : filtered.map(p => `<option value="${p.id}" data-rent="${p.monthlyRent}" data-currency="${p.currency}">${escapeHtml(p.label)}</option>`).join('');
+    : filtered.map(p => `<option value="${p.id}" data-rent="${escapeHtml(String(p.monthlyRent))}" data-currency="${escapeHtml(p.currency)}">${escapeHtml(p.label)}</option>`).join('');
 }
 
 // Re-pulls the grouped total for a fund row's source type under the current
@@ -6745,8 +6855,11 @@ async function mypRenderAll() {
 }
 
 // ---------- Accounts ----------
+// SECURITY: `source` can come from imported backup JSON (mypFunds[].type) and callers
+// interpolate this return value straight into innerHTML — escape the unmapped fallback
+// case so an unrecognised source string can't carry markup into the DOM.
 function mypSourceLabel(source) {
-  return { unittrust: 'Unit Trust', amanah: 'Amanah Saham', kwsp: 'KWSP', fd: 'Fixed Deposit' }[source] || (source || 'Unknown');
+  return { unittrust: 'Unit Trust', amanah: 'Amanah Saham', kwsp: 'KWSP', fd: 'Fixed Deposit' }[source] || escapeHtml(source || 'Unknown');
 }
 
 async function mypScopeLabelText(scope) {

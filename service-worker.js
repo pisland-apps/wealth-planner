@@ -18,7 +18,7 @@
  * and the deploy checklist in README.md.
  */
 
-const CACHE_VERSION = 'v14';
+const CACHE_VERSION = 'v15';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — every same-origin file the app needs, including the
