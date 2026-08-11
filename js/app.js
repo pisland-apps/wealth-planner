@@ -162,6 +162,18 @@ db.version(14).stores({
 let encryptionKey = null; // CryptoKey | null — in-memory only, never persisted
 const ENC_CANARY_PLAINTEXT = 'utt-encryption-canary-v1';
 
+// PBKDF2 iteration count. Bumped from 250,000 (in-line with current OWASP
+// guidance for PBKDF2-SHA256) for anything newly derived — fresh "Enable
+// Encryption" setups and fresh encrypted exports. Existing installs / existing
+// encrypted backup files keep working: the iteration count actually used is
+// always stored alongside the salt (localStorage's utt-encryption-iterations,
+// or the export file's own `iterations` field) and re-used verbatim on
+// unlock/import, so re-deriving the key always matches how it was originally
+// derived. PBKDF2_ITERATIONS_LEGACY is only a fallback for salts/backups saved
+// before this field existed.
+const PBKDF2_ITERATIONS = 600000;
+const PBKDF2_ITERATIONS_LEGACY = 250000;
+
 const PLAIN_FIELDS = {
   funds: ['id'],
   transactions: ['id', 'fundId'],
@@ -207,18 +219,34 @@ function base64ToBytes(b64) {
 
 // Derives an AES-GCM CryptoKey from a passphrase. Pass an existing base64 salt to
 // re-derive the same key (unlock); omit it to generate a fresh salt (first-time setup).
-async function deriveEncryptionKey(passphrase, saltB64) {
+// `iterations` must match whatever was used the first time this salt was derived —
+// callers re-deriving an existing key (unlock, disable, import) MUST pass the
+// iteration count that was stored alongside that salt, not just the current default.
+async function deriveEncryptionKey(passphrase, saltB64, iterations) {
   const salt = saltB64 ? base64ToBytes(saltB64) : crypto.getRandomValues(new Uint8Array(16));
+  const iters = iterations || PBKDF2_ITERATIONS; // fresh setup (no saltB64 passed) uses the current default
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations: iters, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   );
-  return { key, saltB64: bytesToBase64(salt) };
+  return { key, saltB64: bytesToBase64(salt), iterations: iters };
+}
+
+// Reads the iteration count that was actually used for the app's own encrypted-at-rest
+// storage. Installs that enabled encryption before this field existed have no
+// utt-encryption-iterations entry — those were derived at the old 250,000-iteration
+// default, so fall back to that rather than the current (higher) default.
+function getStoredEncryptionIterations() {
+  try {
+    const raw = localStorage.getItem('utt-encryption-iterations');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : PBKDF2_ITERATIONS_LEGACY;
+  } catch (e) { return PBKDF2_ITERATIONS_LEGACY; }
 }
 
 // Encrypts an arbitrary JS value (object/array/string) into a transportable {iv, data} shape.
@@ -328,6 +356,7 @@ function updateEncryptionNavBtn() {
   const lockBtn = document.getElementById('lockNowBtn');
   if (lockBtn) lockBtn.classList.toggle('hidden', !isEncryptionEnabled());
   setupAutoLock();
+  checkEncryptionNudge();
 }
 
 // ---- Fullscreen lock screen: manual lock + auto-lock ----
@@ -404,7 +433,7 @@ async function submitEnableEncryption() {
   status.textContent = 'Encrypting your data — this may take a moment...';
   status.style.color = '#718096';
   try {
-    const { key, saltB64 } = await deriveEncryptionKey(p1, null);
+    const { key, saltB64, iterations } = await deriveEncryptionKey(p1, null);
     encryptionKey = key;
     // One-time migration: re-write every existing (currently plaintext) record through the encrypted wrapper.
     const tables = ['funds', 'transactions', 'navHistory', 'members', 'amanahFunds', 'amanahTransactions', 'kwspAccounts', 'kwspTransactions', 'fixedDeposits', 'fdMaturityRecords', 'fdInterestPayouts', 'realEstateProperties', 'realEstateTx', 'realEstateLoanTx', 'fxTransactions', 'wealthSnapshots', 'incomeForecasts', 'mypPlans', 'mypFunds', 'mypFundRules', 'mypIncomeCategories', 'mypIncomeRanges', 'mypExpenseCategories', 'mypExpenseRanges', 'mypBaselines', 'mypBaselineValues', 'mypActuals', 'mypSavedForecasts'];
@@ -418,6 +447,7 @@ async function submitEnableEncryption() {
     const canary = await encryptValue(key, ENC_CANARY_PLAINTEXT);
     localStorage.setItem('utt-encryption-salt', saltB64);
     localStorage.setItem('utt-encryption-canary', JSON.stringify(canary));
+    localStorage.setItem('utt-encryption-iterations', String(iterations));
     localStorage.setItem('utt-encryption-enabled', 'true');
     closeEncryptionModal();
     updateEncryptionNavBtn();
@@ -438,7 +468,7 @@ async function submitDisableEncryption() {
   status.style.color = '#718096';
   try {
     const saltB64 = localStorage.getItem('utt-encryption-salt');
-    const { key } = await deriveEncryptionKey(passcode, saltB64);
+    const { key } = await deriveEncryptionKey(passcode, saltB64, getStoredEncryptionIterations());
     const canary = JSON.parse(localStorage.getItem('utt-encryption-canary'));
     const decoded = await decryptValue(key, canary);
     if (decoded !== ENC_CANARY_PLAINTEXT) throw new Error('wrong passcode');
@@ -456,6 +486,7 @@ async function submitDisableEncryption() {
     encryptionKey = null;
     localStorage.removeItem('utt-encryption-salt');
     localStorage.removeItem('utt-encryption-canary');
+    localStorage.removeItem('utt-encryption-iterations');
     localStorage.removeItem('utt-encryption-enabled');
     closeEncryptionModal();
     updateEncryptionNavBtn();
@@ -483,7 +514,7 @@ async function attemptUnlock() {
   status.style.color = '#718096';
   try {
     const saltB64 = localStorage.getItem('utt-encryption-salt');
-    const { key } = await deriveEncryptionKey(passcode, saltB64);
+    const { key } = await deriveEncryptionKey(passcode, saltB64, getStoredEncryptionIterations());
     const canary = JSON.parse(localStorage.getItem('utt-encryption-canary'));
     const decoded = await decryptValue(key, canary);
     if (decoded !== ENC_CANARY_PLAINTEXT) throw new Error('wrong passcode');
@@ -631,6 +662,7 @@ async function initApp() {
   await renderWealthAll();
   switchModule(currentModule);
   checkBackupReminder();
+  checkEncryptionNudge();
 }
 
 // ==================== BACKUP REMINDER ====================
@@ -649,6 +681,39 @@ function checkBackupReminder() {
       setTimeout(() => showToast(msg), 800);
     }
   } catch (e) { /* localStorage unavailable (e.g. private browsing) - skip reminder */ }
+}
+
+// ==================== ENCRYPTION NUDGE ====================
+// Encryption is opt-in (data is stored in plaintext IndexedDB until a user turns
+// it on via the nav bar), which is easy to miss since it's tucked away in a modal.
+// Surface a one-time, dismissible banner instead of leaving it purely opt-in-and-
+// hidden. "One-time" per browser: shown once, then snoozed for a while if the
+// user dismisses it rather than enabling — similar in spirit to the backup
+// reminder above, but less frequent since this is a one-off setup nudge, not a
+// recurring task.
+const ENCRYPTION_NUDGE_SNOOZE_DAYS = 30;
+function checkEncryptionNudge() {
+  const banner = document.getElementById('encryptionNudgeBanner');
+  if (!banner) return;
+  if (isEncryptionEnabled()) { banner.classList.add('hidden'); return; }
+  try {
+    const snoozedUntil = localStorage.getItem('utt-encryption-nudge-snoozed-until');
+    if (snoozedUntil && new Date(snoozedUntil) > new Date()) { banner.classList.add('hidden'); return; }
+  } catch (e) { /* localStorage unavailable — fall through and show the banner */ }
+  banner.classList.remove('hidden');
+}
+function dismissEncryptionNudge() {
+  const banner = document.getElementById('encryptionNudgeBanner');
+  if (banner) banner.classList.add('hidden');
+  try {
+    const snoozeUntil = new Date(Date.now() + ENCRYPTION_NUDGE_SNOOZE_DAYS * 24 * 60 * 60 * 1000);
+    localStorage.setItem('utt-encryption-nudge-snoozed-until', snoozeUntil.toISOString());
+  } catch (e) { /* private browsing - ignore, banner just won't stay dismissed */ }
+}
+function enableEncryptionFromNudge() {
+  const banner = document.getElementById('encryptionNudgeBanner');
+  if (banner) banner.classList.add('hidden');
+  openEncryptionModal();
 }
 
 // Sample data
@@ -1205,7 +1270,7 @@ async function renderFunds() {
           <td><a href="#" data-action="showFundDetail" data-prevent="1" data-arg="${fund.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(fund.name)}</a>${fund.code ? `<div style="font-size:11px;color:#718096;margin-top:2px;">${escapeHtml(fund.code)}</div>` : ''}</td>
           <td>${ownerBadgeHtml(fund.ownerIds, membersById)}</td>
           <td>${escapeHtml(fund.category)}</td>
-          <td>${fund.currency}</td>
+          <td>${escapeHtml(fund.currency)}</td>
           <td>${m.units.toFixed(4)}</td>
           <td>${formatNav(fund.nav)}</td>
           <td>${formatCurrency(m.currentValue, fund.currency)}</td>
@@ -1303,7 +1368,7 @@ async function showFundDetail(fundId) {
     txTable.innerHTML = fundTx.map(tx => `<tr>
       <td>${escapeHtml(tx.date)}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
-      <td>${tx.units || '-'}</td>
+      <td>${tx.units ? escapeHtml(tx.units) : '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -1417,7 +1482,7 @@ async function renderTransactions() {
       <td>${escapeHtml(tx.date)}</td>
       <td>${fund ? escapeHtml(fund.name) : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
-      <td>${tx.units || '-'}</td>
+      <td>${tx.units ? escapeHtml(tx.units) : '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -1834,13 +1899,11 @@ async function openPrintOwnerModal(reportType) {
   const members = await getMembers();
   const container = document.getElementById('printOwnerButtons');
   const titles = { unittrust: 'Print Portfolio Summary', amanah: 'Print Amanah Saham Report', kwsp: 'Print KWSP Report', fd: 'Print Fixed Deposit Report', fx: 'Print Foreign Currency Report' };
-  const printFns = { unittrust: 'printPortfolioSummary', amanah: 'printAmanahReport', kwsp: 'printKwspReport', fd: 'printFdReport', fx: 'printFxReport' };
   const allLabels = { unittrust: '👥 All Funds', amanah: '👥 All Schemes', kwsp: '👥 All Accounts', fd: '👥 All Deposits', fx: '👥 All Currencies' };
   document.getElementById('printOwnerModalTitle').textContent = titles[reportType];
-  const printFn = printFns[reportType];
   const allLabel = allLabels[reportType];
-  let html = `<button class="btn btn-primary" style="justify-content:flex-start;" data-action="closeAndPrint" data-fn="${printFn}" data-arg="All">${allLabel}</button>`;
-  html += members.map(m => `<button class="btn btn-secondary" style="justify-content:flex-start;" data-action="closeAndPrint" data-fn="${printFn}" data-arg="${m.id}">👤 ${escapeHtml(m.name)} Only</button>`).join('');
+  let html = `<button class="btn btn-primary" style="justify-content:flex-start;" data-action="closeAndPrint" data-report-type="${reportType}" data-arg="All">${allLabel}</button>`;
+  html += members.map(m => `<button class="btn btn-secondary" style="justify-content:flex-start;" data-action="closeAndPrint" data-report-type="${reportType}" data-arg="${m.id}">👤 ${escapeHtml(m.name)} Only</button>`).join('');
   container.innerHTML = html;
   document.getElementById('printOwnerModal').classList.add('active');
 }
@@ -2121,7 +2184,7 @@ async function showClosedFundDetail(fundId) {
     txTable.innerHTML = fundTx.map(tx => `<tr>
       <td>${escapeHtml(tx.date)}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(tx.type)}</span></td>
-      <td>${tx.units || '-'}</td>
+      <td>${tx.units ? escapeHtml(tx.units) : '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -2223,10 +2286,10 @@ async function confirmExport() {
     status.textContent = 'Encrypting backup...';
     status.style.color = '#718096';
     try {
-      const { key, saltB64 } = await deriveEncryptionKey(p1, null);
+      const { key, saltB64, iterations } = await deriveEncryptionKey(p1, null);
       const canary = await encryptValue(key, ENC_CANARY_PLAINTEXT);
       const payload = await encryptValue(key, data);
-      const wrapped = { encrypted: true, salt: saltB64, canary, payload, exportDate: data.exportDate };
+      const wrapped = { encrypted: true, salt: saltB64, iterations, canary, payload, exportDate: data.exportDate };
       outputBlob = new Blob([JSON.stringify(wrapped, null, 2)], { type: 'application/json' });
       filenameSuffix = '-encrypted';
     } catch (e) {
@@ -2283,7 +2346,10 @@ async function confirmImportPasscode() {
   status.textContent = 'Decrypting...';
   status.style.color = '#718096';
   try {
-    const { key } = await deriveEncryptionKey(passcode, pendingImportEncryptedData.salt);
+    // Older backup files (exported before this field existed) don't have `iterations`
+    // recorded — those were derived with the old 250,000-iteration default.
+    const backupIterations = pendingImportEncryptedData.iterations || PBKDF2_ITERATIONS_LEGACY;
+    const { key } = await deriveEncryptionKey(passcode, pendingImportEncryptedData.salt, backupIterations);
     const canaryCheck = await decryptValue(key, pendingImportEncryptedData.canary);
     if (canaryCheck !== ENC_CANARY_PLAINTEXT) throw new Error('wrong passcode');
     const data = await decryptValue(key, pendingImportEncryptedData.payload);
@@ -2587,7 +2653,7 @@ async function showAmanahFundDetail(fundId) {
     txTable.innerHTML = fundTx.map(tx => `<tr>
       <td>${escapeHtml(tx.date)}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${amanahTxTypeLabel(tx.type)}</span></td>
-      <td>${tx.units || '-'}</td>
+      <td>${tx.units ? escapeHtml(tx.units) : '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -2786,7 +2852,7 @@ async function renderAmanahLedger() {
       <td>${escapeHtml(tx.date)}</td>
       <td>${fund ? escapeHtml(fund.name) : 'Unknown'}</td>
       <td><span style="background:${getTxTypeColor(tx.type)};padding:2px 8px;border-radius:4px;font-size:12px;">${amanahTxTypeLabel(tx.type)}</span></td>
-      <td>${tx.units || '-'}</td>
+      <td>${tx.units ? escapeHtml(tx.units) : '-'}</td>
       <td>${tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-'}</td>
       <td>${formatCurrency(tx.amount, fund && fund.currency)}</td>
       <td>${escapeHtml(tx.notes || '-')}</td>
@@ -2864,7 +2930,7 @@ async function printAmanahReport(ownerFilter) {
   let ledgerHtml = '<table><thead><tr><th>Date</th><th>Scheme</th><th>Type</th><th>Units</th><th>Price</th><th>Amount</th><th>Notes</th></tr></thead><tbody>';
   relevantTx.forEach(tx => {
     const fund = fundsById[tx.amanahFundId];
-    ledgerHtml += '<tr><td>' + escapeHtml(tx.date) + '</td><td>' + (fund ? escapeHtml(fund.name) : '-') + '</td><td>' + escapeHtml(amanahTxTypeLabel(tx.type)) + '</td><td>' + (tx.units || '-') + '</td><td>' + (tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-') + '</td><td>' + formatCurrency(tx.amount, fund && fund.currency) + '</td><td>' + (escapeHtml(tx.notes) || '-') + '</td></tr>';
+    ledgerHtml += '<tr><td>' + escapeHtml(tx.date) + '</td><td>' + (fund ? escapeHtml(fund.name) : '-') + '</td><td>' + escapeHtml(amanahTxTypeLabel(tx.type)) + '</td><td>' + (tx.units ? escapeHtml(tx.units) : '-') + '</td><td>' + (tx.price ? formatCurrency(tx.price, fund && fund.currency) : '-') + '</td><td>' + formatCurrency(tx.amount, fund && fund.currency) + '</td><td>' + (escapeHtml(tx.notes) || '-') + '</td></tr>';
   });
   ledgerHtml += '</tbody></table>';
   printWindow.document.write(ledgerHtml);
@@ -3003,7 +3069,7 @@ async function renderKwspAccounts() {
       <div class="fund-header">
         <div>
           <div class="fund-name"><a href="#" data-action="showKwspAccountDetail" data-prevent="1" data-arg="${account.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(account.name)}</a></div>
-          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${account.currency}</div>
+          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${escapeHtml(account.currency)}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(account.ownerIds, membersById)}</div>
         </div>
       </div>
@@ -3395,6 +3461,7 @@ async function openAttachmentViewer(att) {
       img.style.borderRadius = '8px';
       content.appendChild(img);
     } else if (isPdf) {
+      const pdfjsLib = await window.pdfjsLibReady; // pdf.js is loaded async (ESM-only build) — see js/pdf-loader.js
       const bytes = dataURLtoUint8Array(att.data);
       const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
       content.innerHTML = '';
@@ -3639,7 +3706,7 @@ async function renderFdAccounts() {
       <div class="fund-header">
         <div>
           <div class="fund-name"><a href="#" data-action="showFdDetail" data-prevent="1" data-arg="${fd.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(fd.bankName)}</a>${getFdAttachmentsList(fd).length > 0 ? ' <span title="Has attachment">📎</span>' : ''}</div>
-          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${fd.currency} · ${parseFloat(fd.interestRate).toFixed(2)}% p.a. · ${fd.autoRenew === true || fd.autoRenew === 'true' ? 'Auto-Renew' : 'No Auto-Renew'}</div>
+          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${escapeHtml(fd.currency)} · ${parseFloat(fd.interestRate).toFixed(2)}% p.a. · ${fd.autoRenew === true || fd.autoRenew === 'true' ? 'Auto-Renew' : 'No Auto-Renew'}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(fd.ownerIds, membersById)}</div>
         </div>
       </div>
@@ -3799,7 +3866,7 @@ async function showFdDetail(fdId) {
       <td><span style="background:${r.action === 'Renewed' ? '#c6f6d5' : '#fed7d7'};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(r.action)}</span></td>
       <td>${formatCurrency(r.principal, r.currency)}</td>
       <td>${formatCurrency(r.interestEarned, r.currency)}</td>
-      <td>${r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)}</td>
+      <td>${r.action === 'Renewed' ? 'New deposit #' + escapeHtml(r.newFixedDepositId) : formatCurrency(r.payoutAmount, r.currency)}</td>
       <td>${escapeHtml(r.notes || '-')}</td>
     </tr>`).join('');
   }
@@ -3996,7 +4063,7 @@ async function renderFdMaturityRecords() {
     <td><span style="background:${r.action === 'Renewed' ? '#c6f6d5' : '#fed7d7'};padding:2px 8px;border-radius:4px;font-size:12px;">${escapeHtml(r.action)}</span></td>
     <td>${formatCurrency(r.principal, r.currency)}</td>
     <td class="positive">${formatCurrency(r.interestEarned, r.currency)}</td>
-    <td>${r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)}</td>
+    <td>${r.action === 'Renewed' ? 'New deposit #' + escapeHtml(r.newFixedDepositId) : formatCurrency(r.payoutAmount, r.currency)}</td>
     <td>${escapeHtml(r.notes || '-')}</td>
   </tr>`;
   }).join('');
@@ -4112,7 +4179,7 @@ async function printFdReport(ownerFilter) {
   const sortedRecords = relevantRecords.slice().sort((a, b) => new Date(b.maturityDate) - new Date(a.maturityDate));
   let recHtml = '<table><thead><tr><th>Maturity Date</th><th>Bank</th><th>Action</th><th>Principal</th><th>Interest Earned</th><th>Payout / New Deposit</th><th>Notes</th></tr></thead><tbody>';
   sortedRecords.forEach(r => {
-    recHtml += '<tr><td>' + escapeHtml(r.maturityDate) + '</td><td>' + escapeHtml(r.bankName) + '</td><td>' + escapeHtml(r.action) + '</td><td>' + formatCurrency(r.principal, r.currency) + '</td><td>' + formatCurrency(r.interestEarned, r.currency) + '</td><td>' + (r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)) + '</td><td>' + (escapeHtml(r.notes) || '-') + '</td></tr>';
+    recHtml += '<tr><td>' + escapeHtml(r.maturityDate) + '</td><td>' + escapeHtml(r.bankName) + '</td><td>' + escapeHtml(r.action) + '</td><td>' + formatCurrency(r.principal, r.currency) + '</td><td>' + formatCurrency(r.interestEarned, r.currency) + '</td><td>' + (r.action === 'Renewed' ? 'New deposit #' + escapeHtml(r.newFixedDepositId) : formatCurrency(r.payoutAmount, r.currency)) + '</td><td>' + (escapeHtml(r.notes) || '-') + '</td></tr>';
   });
   recHtml += '</tbody></table>';
   printWindow.document.write(recHtml);
@@ -4146,7 +4213,7 @@ async function printFdSingleReport(fdId) {
   } else {
     let html = '<table><thead><tr><th>Maturity Date</th><th>Action</th><th>Principal</th><th>Interest Earned</th><th>Payout / New Deposit</th><th>Notes</th></tr></thead><tbody>';
     history.forEach(r => {
-      html += '<tr><td>' + escapeHtml(r.maturityDate) + '</td><td>' + escapeHtml(r.action) + '</td><td>' + formatCurrency(r.principal, r.currency) + '</td><td>' + formatCurrency(r.interestEarned, r.currency) + '</td><td>' + (r.action === 'Renewed' ? 'New deposit #' + r.newFixedDepositId : formatCurrency(r.payoutAmount, r.currency)) + '</td><td>' + (escapeHtml(r.notes) || '-') + '</td></tr>';
+      html += '<tr><td>' + escapeHtml(r.maturityDate) + '</td><td>' + escapeHtml(r.action) + '</td><td>' + formatCurrency(r.principal, r.currency) + '</td><td>' + formatCurrency(r.interestEarned, r.currency) + '</td><td>' + (r.action === 'Renewed' ? 'New deposit #' + escapeHtml(r.newFixedDepositId) : formatCurrency(r.payoutAmount, r.currency)) + '</td><td>' + (escapeHtml(r.notes) || '-') + '</td></tr>';
     });
     html += '</tbody></table>';
     printWindow.document.write(html);
@@ -4179,7 +4246,7 @@ function statCardHtml(label, value, plNumber) {
 function txHistoryTableHtml(transactions, currency) {
   let html = '<table><thead><tr><th>Date</th><th>Type</th><th>Units</th><th>Price</th><th>Amount</th><th>Notes</th></tr></thead><tbody>';
   transactions.forEach(tx => {
-    html += '<tr><td>' + escapeHtml(tx.date) + '</td><td>' + escapeHtml(tx.type) + '</td><td>' + (tx.units || '-') + '</td><td>' + (tx.price ? formatCurrency(tx.price, currency) : '-') + '</td><td>' + formatCurrency(tx.amount, currency) + '</td><td>' + (escapeHtml(tx.notes) || '-') + '</td></tr>';
+    html += '<tr><td>' + escapeHtml(tx.date) + '</td><td>' + escapeHtml(tx.type) + '</td><td>' + (tx.units ? escapeHtml(tx.units) : '-') + '</td><td>' + (tx.price ? formatCurrency(tx.price, currency) : '-') + '</td><td>' + formatCurrency(tx.amount, currency) + '</td><td>' + (escapeHtml(tx.notes) || '-') + '</td></tr>';
   });
   html += '</tbody></table>';
   return html;
@@ -4638,8 +4705,8 @@ async function renderReProperties() {
       return `<tr>
         <td><a href="#" data-action="showRePropertyDetail" data-prevent="1" data-arg="${p.id}" style="color:#667eea;text-decoration:none;cursor:pointer;font-weight:600;">${escapeHtml(p.name)}</a></td>
         <td>${ownerBadgeHtml(p.ownerIds, membersById)}</td>
-        <td>${p.type || ''}</td>
-        <td>${p.status || ''}</td>
+        <td>${escapeHtml(p.type || '')}</td>
+        <td>${escapeHtml(p.status || '')}</td>
         <td>${formatCurrency(p.value, p.currency)}</td>
         <td>${formatDebtAmount(m.mortgage, p.currency)}</td>
         <td>${formatCurrency(m.equity, p.currency)}</td>
@@ -4663,7 +4730,7 @@ async function renderReProperties() {
       <div class="fund-header">
         <div>
           <div class="fund-name"><a href="#" data-action="showRePropertyDetail" data-prevent="1" data-arg="${p.id}" style="color:#2d3748;text-decoration:none;cursor:pointer;">${escapeHtml(p.name)}</a></div>
-          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${p.type || ''} · ${p.status || ''} · ${p.currency || getBaseCurrency()}</div>
+          <div style="font-size: 12px; color: #718096; margin-top: 4px;">${escapeHtml(p.type || '')} · ${escapeHtml(p.status || '')} · ${escapeHtml(p.currency || getBaseCurrency())}</div>
           <div style="margin-top: 6px;">${ownerBadgeHtml(p.ownerIds, membersById)}</div>
         </div>
       </div>
@@ -5070,7 +5137,7 @@ async function printRePropertyReport(id, sections) {
     '.re-amount-line{text-align:right;}';
   const printWindow = openReportWindow('Property — ' + p.name, extraStyle);
   printWindow.document.write('<h1>' + escapeHtml(p.name) + '</h1>');
-  printWindow.document.write('<p>' + [p.type, p.status, p.bankName ? ('Lender: ' + p.bankName) : ''].filter(Boolean).join(' · ') + ' | Generated: ' + new Date().toLocaleDateString() + '</p>');
+  printWindow.document.write('<p>' + [escapeHtml(p.type), escapeHtml(p.status), p.bankName ? ('Lender: ' + escapeHtml(p.bankName)) : ''].filter(Boolean).join(' · ') + ' | Generated: ' + new Date().toLocaleDateString() + '</p>');
   printWindow.document.write('<div class="stats">');
   printWindow.document.write(statCardHtml('Purchase Cost', formatCurrency(p.value, cur)));
   printWindow.document.write(statCardHtml('Mortgage Balance', formatDebtAmount(m.mortgage, cur)));
@@ -5489,7 +5556,7 @@ function fxRenderTransactions(txs, membersById) {
     tr.innerHTML = `
       <td>${escapeHtml(tx.date)}</td>
       <td><span style="padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;${fxTxTypeBadgeStyle(tx.type)}">${escapeHtml(tx.type)}</span></td>
-      <td>${currencyFlag(tx.currency)} ${tx.currency}</td>
+      <td>${currencyFlag(tx.currency)} ${escapeHtml(tx.currency)}</td>
       <td><strong>${tx.amount.toLocaleString()}</strong></td>
       <td>${tx.rate.toFixed(5)}</td>
       <td>${formatCurrency(tx.totalBase, base)}</td>
@@ -7404,6 +7471,21 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 // <img onerror=...> payload) reach innerHTML, the browser has nothing to
 // execute — data-action values are inert strings looked up in the ACTIONS
 // table below, not code.
+// Whitelist for the "Print Summary" owner-picker modal (openPrintOwnerModal /
+// closeAndPrint below). Report buttons carry a data-report-type attribute (one
+// of the keys below, always set by this app's own static markup — see
+// index.html's "Print Report" buttons and printFns in openPrintOwnerModal),
+// which is looked up here rather than doing a window[name] dynamic lookup —
+// so there's no path from an arbitrary/attacker-influenced string to calling
+// an arbitrary global function, even in principle.
+const PRINT_REPORT_FUNCTIONS = {
+  unittrust: (arg) => printPortfolioSummary(arg),
+  amanah: (arg) => printAmanahReport(arg),
+  kwsp: (arg) => printKwspReport(arg),
+  fd: (arg) => printFdReport(arg),
+  fx: (arg) => printFxReport(arg),
+};
+
 const ACTIONS = {
   addForecastFundRow: () => addForecastFundRow(),
   addForecastPropertyRow: () => addForecastPropertyRow(),
@@ -7473,7 +7555,9 @@ const ACTIONS = {
   deleteReProperty: (el) => deleteReProperty(Number(el.dataset.arg)),
   deleteReTx: (el) => deleteReTx(Number(el.dataset.arg)),
   deleteTransaction: (el) => deleteTransaction(Number(el.dataset.arg)),
+  dismissEncryptionNudge: () => dismissEncryptionNudge(),
   editAmanahFundFromDetail: () => editAmanahFundFromDetail(),
+  enableEncryptionFromNudge: () => enableEncryptionFromNudge(),
   editAmanahTx: (el) => editAmanahTx(Number(el.dataset.arg)),
   editClosedFundFromModal: () => editClosedFundFromModal(),
   editFdFromDetail: () => editFdFromDetail(),
@@ -7621,7 +7705,7 @@ const ACTIONS = {
   removeMyprow: (el) => { const row = document.getElementById('myprow-' + el.dataset.arg); if (row) row.remove(); },
   closeAndPrint: (el) => {
     closePrintOwnerModal();
-    const fn = window[el.dataset.fn];
+    const fn = PRINT_REPORT_FUNCTIONS[el.dataset.reportType];
     if (typeof fn === 'function') fn(el.dataset.arg);
   },
   deleteMember: (el) => deleteMember(Number(el.dataset.arg), el.dataset.arg2),

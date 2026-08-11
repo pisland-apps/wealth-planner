@@ -22,7 +22,7 @@
     are vendored locally under ./lib/ and served from this origin — no CDN origin is
     allowlisted here at all any more.
     No 'unsafe-inline' here, which is why the two inline <script> blocks that used to
-    live in this file were moved out to ./js/pdf-worker-init.js and ./js/app.js.
+    live in this file were moved out to ./js/pdf-loader.js and ./js/app.js.
   - script-src-attr: this app used to rely on onclick/onchange/oninput attributes throughout
     the rendered HTML. As of this version those have all been migrated to data-action
     attributes plus a delegated addEventListener dispatcher (see js/app.js, ACTIONS table),
@@ -35,7 +35,9 @@
     <style> block below; not a script-execution risk on its own.
   - connect-src: 'self' plus the exchange-rate API this app calls.
   - worker-src: 'self' only now — pdf.js loads its worker from ./lib/ too (see
-    js/pdf-worker-init.js), so no external worker-src origin is needed.
+    js/pdf-loader.js), so no external worker-src origin is needed. pdf.js is
+    loaded via a dynamic import() of its .mjs build (see js/pdf-loader.js) —
+    dynamic import fetches are governed by script-src, so 'self' covers it too.
   - img-src includes data: and blob: because attachments are rendered from data URLs and
     downloads/PDF previews use object URLs.
   - frame-ancestors/report-uri/sandbox are intentionally omitted: the CSP spec ignores
@@ -67,12 +69,12 @@
     would have served, but built locally instead of fetched from jsdelivr.
   ./lib/dexie.min.js — Dexie 3.2.4, the package's own published minified build,
     copied as-is (no local minification needed).
-  ./lib/pdf.min.js + ./lib/pdf.worker.min.js — pdf.js 3.11.174, vendored earlier.
+  ./lib/pdf.min.mjs + ./lib/pdf.worker.min.mjs — pdf.js 4.9.155 (ESM-only build;
+  fixes CVE-2024-4367, present in the previously-vendored 3.11.174).
 -->
 <script src="./lib/chart.umd.min.js"></script>
 <script src="./lib/dexie.min.js"></script>
-<script src="./lib/pdf.min.js"></script>
-<script src="./js/pdf-worker-init.js"></script>
+<script src="./js/pdf-loader.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
@@ -315,6 +317,13 @@
     <button class="nav-btn" data-action="openExportModal">Export</button>
     <button class="nav-btn" data-action="triggerImportFile">Import</button>
     <input type="file" id="importFile" class="hidden" accept=".json" data-action="importDataFile">
+  </div>
+  <div class="hidden" id="encryptionNudgeBanner" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#fffaf0; border:1px solid #f6ad55; border-radius:8px; padding:10px 14px; margin:0 0 15px;">
+    <span style="font-size:13px; color:#7b341e;">🔓 Your data isn't encrypted yet. Turn on encryption so it's unreadable without your passcode if this device is ever lost, shared, or compromised.</span>
+    <span style="display:flex; gap:8px; flex-shrink:0;">
+      <button class="nav-btn" style="padding:6px 12px; font-size:12px;" data-action="enableEncryptionFromNudge">🔒 Enable Now</button>
+      <button class="nav-btn secondary" style="padding:6px 12px; font-size:12px;" data-action="dismissEncryptionNudge">Not now</button>
+    </span>
   </div>
   <div style="font-size: 12px; color: #718096; margin: -8px 0 15px; padding: 0 4px;">🔒 Backups are encrypted by default when exporting — you can choose plaintext instead at export time if you prefer, but keep any plaintext backup file somewhere secure.</div>
   <div class="nav-bar" id="unittrust-subnav">

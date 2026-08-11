@@ -25,7 +25,7 @@
   Cache-Control: no-cache
 
 # Vendored libraries and icons: content-hash-free filenames, so cache long but
-# not "immutable" (a future update to e.g. lib/pdf.min.js needs a real filename
+# not "immutable" (a future update to e.g. lib/pdf.min.mjs needs a real filename
 # change or a hard refresh to bust this — bump filenames if you ever patch these).
 /lib/*
   Cache-Control: public, max-age=31536000

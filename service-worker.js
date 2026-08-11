@@ -18,7 +18,7 @@
  * and the deploy checklist in README.md.
  */
 
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — every same-origin file the app needs, including the
@@ -37,11 +37,11 @@ const APP_SHELL = [
   './icons/favicon-16.png',
   './js/app.js',
   './js/back-nav.js',
-  './js/pdf-worker-init.js',
+  './js/pdf-loader.js',
   './lib/chart.umd.min.js',
   './lib/dexie.min.js',
-  './lib/pdf.min.js',
-  './lib/pdf.worker.min.js'
+  './lib/pdf.min.mjs',
+  './lib/pdf.worker.min.mjs'
 ];
 
 self.addEventListener('install', (event) => {
