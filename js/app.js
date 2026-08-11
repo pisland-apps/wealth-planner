@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
