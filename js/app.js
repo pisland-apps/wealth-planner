@@ -6,7 +6,7 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 const APP_VERSION_DATE = '2026-08-11';
 
 (function renderVersionBadge() {
@@ -2997,7 +2997,7 @@ async function printAmanahReport(ownerFilter) {
   const reportTitle = 'Amanah Saham Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, extraStyle);
   const base = getBaseCurrency();
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency: ' + base + (ownerName ? ' &nbsp;|&nbsp; Owner: ' + ownerName : '') + '</div>');
   const allFunds = await encGetAll('amanahFunds');
   const funds = ownerFilter === 'All' ? allFunds : allFunds.filter(f => (f.ownerIds || []).includes(parseInt(ownerFilter)));
@@ -3423,7 +3423,7 @@ async function printKwspReport(ownerFilter) {
   const reportTitle = 'KWSP Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, extraStyle);
   const base = getBaseCurrency();
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency: ' + base + (ownerName ? ' &nbsp;|&nbsp; Owner: ' + ownerName : '') + '</div>');
   const allAccounts = await encGetAll('kwspAccounts');
   const accounts = ownerFilter === 'All' ? allAccounts : allAccounts.filter(a => (a.ownerIds || []).includes(parseInt(ownerFilter)));
@@ -4237,7 +4237,7 @@ async function printFdReport(ownerFilter) {
   const reportTitle = 'Fixed Deposit Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, extraStyle);
   const base = getBaseCurrency();
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency: ' + base + (ownerName ? ' &nbsp;|&nbsp; Owner: ' + ownerName : '') + '</div>');
   const allDeposits = await encGetAll('fixedDeposits');
   const deposits = ownerFilter === 'All' ? allDeposits : allDeposits.filter(f => (f.ownerIds || []).includes(parseInt(ownerFilter)));
@@ -4310,8 +4310,8 @@ async function printFdSingleReport(fdId) {
   printWindow.document.write('<div class="stats">');
   printWindow.document.write(statCardHtml('Principal', formatCurrency(fd.principal, fd.currency)));
   printWindow.document.write(statCardHtml('Interest Rate', parseFloat(fd.interestRate).toFixed(2) + '%'));
-  printWindow.document.write(statCardHtml('Placement Date', fd.placementDate));
-  printWindow.document.write(statCardHtml('Maturity Date', fd.maturityDate));
+  printWindow.document.write(statCardHtml('Placement Date', escapeHtml(fd.placementDate)));
+  printWindow.document.write(statCardHtml('Maturity Date', escapeHtml(fd.maturityDate)));
   printWindow.document.write(statCardHtml('Auto-Renew', (fd.autoRenew === true || fd.autoRenew === 'true') ? 'Yes' : 'No'));
   printWindow.document.write(statCardHtml('Status', fd.status));
   printWindow.document.write('</div>');
@@ -4364,7 +4364,11 @@ function txHistoryTableHtml(transactions, currency) {
 
 function openReportWindow(title, extraStyle) {
   const printWindow = window.open('', '_blank');
-  printWindow.document.write('<html><head><title>' + title + '</title><style>' + printBaseStyles() + (extraStyle || '') + '</style></head><body>');
+  // SECURITY: `title` is often built from free-text fields (fund/account/FD/property/member
+  // names) entered directly in the app's own forms, not just import-controlled data — escape
+  // unconditionally here so every call site is safe by default rather than relying on each
+  // caller to remember to pre-escape.
+  printWindow.document.write('<html><head><title>' + escapeHtml(title) + '</title><style>' + printBaseStyles() + (extraStyle || '') + '</style></head><body>');
   return printWindow;
 }
 
@@ -4412,7 +4416,7 @@ async function printPortfolioSummary(ownerFilter) {
   const reportTitle = 'Portfolio Summary Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, extraStyle);
   const base = getBaseCurrency();
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency for converted totals: ' + base + (ownerName ? ' &nbsp;|&nbsp; Owner: ' + ownerName : '') + '</div>');
   encGetAll('funds').then(allFunds => {
     const funds = ownerFilter === 'All' ? allFunds : allFunds.filter(f => (f.ownerIds || []).includes(parseInt(ownerFilter)));
@@ -5938,7 +5942,7 @@ async function printFxReport(ownerFilter) {
   const reportTitle = 'Foreign Currency Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, extraStyle);
   const base = getBaseCurrency();
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency: ' + base + (ownerName ? ' &nbsp;|&nbsp; Owner: ' + ownerName : '') + '</div>');
 
   let txs = await encGetAll('fxTransactions');
@@ -6306,7 +6310,7 @@ async function printWealthReport(ownerFilter) {
     : await computeWealthSummary(ownerFilter, 'exclusive');
   const reportTitle = 'My Wealth Report' + (ownerName ? ' — ' + ownerName : '');
   const printWindow = openReportWindow(reportTitle, '');
-  printWindow.document.write('<h1>' + reportTitle + '</h1>');
+  printWindow.document.write('<h1>' + escapeHtml(reportTitle) + '</h1>');
   printWindow.document.write('<div class="subtitle">Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + ' &nbsp;|&nbsp; Base currency: ' + base + '</div>');
   printWindow.document.write('<div class="stats">');
   printWindow.document.write(statCardHtml('Total Net Worth', formatCurrency(summary.total)));
