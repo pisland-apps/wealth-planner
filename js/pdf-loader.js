@@ -1,7 +1,7 @@
 // pdf.js loader
 // ------------------------------------------------------------
 // pdfjs-dist dropped its UMD/global "pdf.min.js" build starting at v4.0 — as of
-// v4.9.155 it ships ES modules only (pdf.min.mjs / pdf.worker.min.mjs). The rest
+// v6.2.108 it still ships ES modules only (pdf.min.mjs / pdf.worker.min.mjs). The rest
 // of this app's scripts (app.js, back-nav.js) are classic scripts relying on
 // document-order global execution, so rather than converting the whole app to
 // ES modules (which would silently stop attaching its top-level functions to
@@ -16,9 +16,10 @@
 //
 // Matching worker build for the version above — must stay in sync if the
 // version is ever bumped. Vendored locally at ./lib/pdf.worker.min.mjs
-// (pdfjs-dist 4.9.155, fixes CVE-2024-4367) — same-origin, no CDN. pdf.js
-// internally instantiates this worker with `{ type: 'module' }`, so no extra
-// wiring is needed here beyond pointing workerSrc at it.
+// (pdfjs-dist 6.2.108, fixes CVE-2024-4367 and all subsequent advisories as
+// of this build) — same-origin, no CDN. pdf.js internally instantiates this
+// worker with `{ type: 'module' }`, so no extra wiring is needed here beyond
+// pointing workerSrc at it.
 window.pdfjsLibReady = (async () => {
   try {
     const pdfjsLib = await import('../lib/pdf.min.mjs');
