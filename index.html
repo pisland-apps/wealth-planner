@@ -156,6 +156,32 @@
   #attachmentViewerModal { z-index: 1100; }
   /* Lock screen must sit above absolutely everything else, including other modals, so auto-lock always covers the full app */
   #unlockOverlay { z-index: 9999; }
+  /* On-screen numpad for the lock screen — big touch targets for mobile/tablet passcode entry.
+     #unlockPasscode is readonly + inputmode="none" (see index.html markup), so tapping these
+     buttons (or a physical keyboard, handled in js/app.js) is the only way to type into it;
+     the native mobile keyboard never gets triggered. */
+  .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .numpad-key {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    padding: 0;
+    height: 56px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f7fafc;
+    color: #2d3748;
+    font-size: 22px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .numpad-key:hover { background: #edf2f7; }
+  .numpad-key:active { background: #e2e8f0; transform: scale(0.96); }
+  .numpad-key-alt { font-size: 16px; color: #718096; }
+  @media (min-width: 480px) {
+    .numpad-key { height: 62px; font-size: 24px; }
+  }
   /* Version badge: a "what code shipped" label, not a "what the browser is running" guarantee.
      Sits above the lock screen (higher z-index than #unlockOverlay) and lives outside any
      .modal-overlay, so it's visible even before the passcode is entered. Text is filled in by
@@ -1897,13 +1923,30 @@
 
 <!-- Unlock Overlay (blocking, shown before the app loads if encryption is on) -->
 <div class="modal-overlay" id="unlockOverlay" style="background: rgba(45,55,72,0.97);">
-  <div class="modal" style="text-align:center;">
+  <div class="modal" style="text-align:center;max-width:340px;">
     <div style="font-size:40px;margin-bottom:10px;">🔒</div>
     <h2>Enter Passcode to Unlock</h2>
     <p style="color:#718096;font-size:13px;margin-bottom:20px;">Your data is encrypted. Enter your passcode to continue.</p>
-    <input type="password" id="unlockPasscode" autocomplete="off" placeholder="Passcode" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;" data-enter-action="attemptUnlock">
+    <!-- readonly + inputmode="none": value is only ever written by the numpad buttons below
+         (or by unlockKeyboardBuffer's physical-keydown listener in js/app.js) via JS, so the
+         on-screen mobile keyboard never gets a chance to pop up, on either tap or focus. -->
+    <input type="password" id="unlockPasscode" autocomplete="off" placeholder="Passcode" readonly inputmode="none" style="width:100%;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;text-align:center;margin-bottom:12px;caret-color:transparent;" data-enter-action="attemptUnlock">
     <div id="unlockStatus" style="font-size:13px;margin-bottom:15px;min-height:18px;color:#e53e3e;"></div>
-    <button class="btn btn-primary" data-action="attemptUnlock" style="width:100%;justify-content:center;">Unlock</button>
+    <div class="numpad" id="unlockNumpad">
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="1">1</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="2">2</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="3">3</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="4">4</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="5">5</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="6">6</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="7">7</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="8">8</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="9">9</button>
+      <button type="button" class="numpad-key numpad-key-alt" data-action="unlockNumpadKey" data-arg="clear">C</button>
+      <button type="button" class="numpad-key" data-action="unlockNumpadKey" data-arg="0">0</button>
+      <button type="button" class="numpad-key numpad-key-alt" data-action="unlockNumpadKey" data-arg="back">⌫</button>
+    </div>
+    <button class="btn btn-primary" data-action="attemptUnlock" style="width:100%;justify-content:center;margin-top:14px;">Unlock</button>
   </div>
 </div>
 

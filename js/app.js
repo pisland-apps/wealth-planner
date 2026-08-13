@@ -6,8 +6,8 @@
 // If you bump one, bump the other too. See the matching reminder comment
 // near CACHE_VERSION in service-worker.js, and the deploy checklist in
 // README.md, which covers updating both together.
-const APP_VERSION = 'v18';
-const APP_VERSION_DATE = '2026-08-12';
+const APP_VERSION = 'v19';
+const APP_VERSION_DATE = '2026-08-13';
 
 (function renderVersionBadge() {
   const badge = document.getElementById('versionBadge');
@@ -500,11 +500,43 @@ async function submitDisableEncryption() {
 
 function showUnlockOverlay() {
   document.getElementById('unlockOverlay').classList.add('active');
+  // #unlockPasscode is readonly (see index.html), so focusing it never triggers the mobile
+  // on-screen keyboard — it just gives the field a focus ring / lets Enter-to-unlock work.
   document.getElementById('unlockPasscode').focus();
 }
 function hideUnlockOverlay() {
   document.getElementById('unlockOverlay').classList.remove('active');
 }
+
+// ---- Lock-screen numpad -----------------------------------------------
+// #unlockPasscode is readonly + inputmode="none", so its value is only ever changed here —
+// either from the on-screen numpad buttons (data-action="unlockNumpadKey") or from the
+// physical-keyboard passthrough listener below. Passcodes aren't required to be digits-only
+// (the "Set a Passcode" field takes any 6+ characters), so the physical-keyboard path accepts
+// any printable character, not just 0-9 — the numpad is just a faster input method for the
+// common case of a numeric passcode, not a hard restriction on what the passcode can contain.
+function handleUnlockNumpadKey(key) {
+  const input = document.getElementById('unlockPasscode');
+  if (!input) return;
+  if (key === 'clear') input.value = '';
+  else if (key === 'back') input.value = input.value.slice(0, -1);
+  else input.value += key;
+}
+
+// Physical keyboard still works even though the field is readonly: while the lock screen is
+// showing, printable keys and Backspace are captured here and applied to the field's value
+// directly (Enter is already handled by the existing data-enter-action listener below).
+document.addEventListener('keydown', function(e) {
+  const overlay = document.getElementById('unlockOverlay');
+  if (!overlay || !overlay.classList.contains('active')) return;
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    handleUnlockNumpadKey('back');
+  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    handleUnlockNumpadKey(e.key);
+  }
+});
 
 async function attemptUnlock() {
   const passcode = document.getElementById('unlockPasscode').value;
@@ -7797,6 +7829,7 @@ const ACTIONS = {
   switchPlannerTab: (el) => switchPlannerTab(el.dataset.arg),
   switchTab: (el) => switchTab(el.dataset.arg),
   toggleReLoanFields: () => toggleReLoanFields(),
+  unlockNumpadKey: (el) => handleUnlockNumpadKey(el.dataset.arg),
   updateAllNav: () => updateAllNav(),
   updateReTxCategories: () => updateReTxCategories(),  // --- Special/composite actions (multi-statement or global-state-dependent
   //     calls that came from static index.html buttons or dynamic composites) ---
