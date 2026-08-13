@@ -15,6 +15,12 @@
 
 # HTML shell and service worker: never cache, so a deployed update (and any
 # CSP/security fix) reaches the user on next load instead of being served stale.
+# Both '/' and '/index.html' are listed: Cloudflare Pages redirects the latter to
+# the former (see FIXES-v20.md), so '/' is what's actually served for every
+# navigation, but '/index.html' is kept too in case a future host serves it as-is.
+/
+  Cache-Control: no-cache
+
 /index.html
   Cache-Control: no-cache
 

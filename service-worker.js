@@ -16,18 +16,29 @@
  * do not sync automatically — if you bump this, bump that too.
  * See the matching reminder comment near APP_VERSION in js/app.js,
  * and the deploy checklist in README.md.
+ *
+ * IMPORTANT — navigations always resolve through './', never
+ * './index.html': some static hosts (e.g. Cloudflare Pages) 301/308-
+ * redirect /index.html -> / by default. Precaching './index.html'
+ * would silently follow that redirect and cache a Response with
+ * redirected:true — and a service worker is not allowed to answer a
+ * *navigation* request with a redirected Response (Chrome fails it
+ * with net::ERR_FAILED). manifest.json's start_url is './' for the
+ * same reason: an installed shortcut must not relaunch at a URL this
+ * worker can't safely serve. See FIXES-v20.md.
  */
 
-const CACHE_VERSION = 'v19';
+const CACHE_VERSION = 'v20';
 const CACHE_NAME = `wealth-planner-${CACHE_VERSION}`;
 
 // App shell — every same-origin file the app needs, including the
 // vendored libraries. No CDN assets left to track separately: all
 // three third-party scripts (chart.js, Dexie, pdf.js + its worker)
 // live under ./lib/ and are just as "app shell" as index.html itself.
+// './index.html' is intentionally NOT listed here — see the note above.
+// './' is the only HTML entry point this worker ever precaches or serves.
 const APP_SHELL = [
   './',
-  './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -77,8 +88,30 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // no cross-origin requests to handle any more
 
-  // App shell: cache-first, falling back to network, then to index.html
-  // for any navigation so deep refreshes still work offline.
+  // Navigation requests (address-bar loads, the installed shortcut relaunching, links,
+  // even a deep path a host might rewrite to the app shell) always resolve through the
+  // canonical './' cache entry, regardless of the exact URL requested. This sidesteps
+  // host-specific redirect behavior entirely instead of trying to special-case every
+  // possible request URL that might resolve to the app shell.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cachedShell = await cache.match('./');
+        if (cachedShell) return cachedShell;
+        try {
+          const fresh = await fetch('./');
+          await cache.put('./', fresh.clone());
+          return fresh;
+        } catch (err) {
+          throw err;
+        }
+      })()
+    );
+    return;
+  }
+
+  // Everything else (assets, libs, icons): cache-first, falling back to network.
   event.respondWith(
     (async () => {
       const cached = await caches.match(request);
@@ -89,10 +122,6 @@ self.addEventListener('fetch', (event) => {
         cache.put(request, fresh.clone());
         return fresh;
       } catch (err) {
-        if (request.mode === 'navigate') {
-          const fallback = await caches.match('./index.html');
-          if (fallback) return fallback;
-        }
         throw err;
       }
     })()

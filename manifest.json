@@ -2,7 +2,7 @@
   "name": "Wealth Planner",
   "short_name": "Wealth Planner",
   "description": "Unit trust, Amanah Saham, KWSP, Fixed Deposit, Real Estate and multi-year wealth forecasting — all offline, all encrypted, all local to your device.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
